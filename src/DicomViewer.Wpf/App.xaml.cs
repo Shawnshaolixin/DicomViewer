@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
 	{
 		base.OnStartup(e);
 
+		// 当前先用手工组装依赖，后续如果模块继续增多再切换到 DI 容器。
 		var viewModel = new MainViewModel(new WorkspaceService(
 			new FileSystemStudyCatalogService(),
 			new PlaceholderRenderService(),

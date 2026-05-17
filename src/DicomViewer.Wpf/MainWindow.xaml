@@ -53,6 +53,8 @@
                         <Button Content="平移" Command="{Binding PanToolCommand}" />
                         <Button Content="窗宽窗位" Command="{Binding WindowLevelToolCommand}" />
                         <Button Content="长度测量" Command="{Binding LengthToolCommand}" />
+                        <Button Content="放大" Command="{Binding ZoomInCommand}" />
+                        <Button Content="缩小" Command="{Binding ZoomOutCommand}" />
                         <Button Content="上一张" Command="{Binding PreviousSliceCommand}" />
                         <Button Content="下一张" Command="{Binding NextSliceCommand}" />
                         <Button Content="重置视图" Command="{Binding ResetViewCommand}" Margin="16,0,0,0" />
@@ -61,6 +63,13 @@
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <TextBox Text="{Binding ImportPath, UpdateSourceTrigger=PropertyChanged}" />
                         <Button Content="导入目录" Command="{Binding ImportFolderCommand}" Margin="12,0,0,0" />
+                        <Button Content="软组织窗" Command="{Binding SoftTissuePresetCommand}" Margin="20,0,0,0" />
+                        <Button Content="肺窗" Command="{Binding LungPresetCommand}" />
+                        <Button Content="骨窗" Command="{Binding BonePresetCommand}" />
+                        <Button Content="WW+" Command="{Binding IncreaseWindowCommand}" Margin="20,0,0,0" />
+                        <Button Content="WW-" Command="{Binding DecreaseWindowCommand}" />
+                        <Button Content="WL+" Command="{Binding IncreaseLevelCommand}" />
+                        <Button Content="WL-" Command="{Binding DecreaseLevelCommand}" />
                     </StackPanel>
                 </StackPanel>
 

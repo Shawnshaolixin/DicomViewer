@@ -31,12 +31,23 @@ public sealed class MainViewModel : ObservableObject
     {
         _workspaceService = workspaceService;
         SeriesItems = new ObservableCollection<SeriesSummary>();
+
+        // 当前 ViewModel 只负责把 UI 命令转成工作区动作，不直接处理 DICOM 解析或像素运算。
         ImportFolderCommand = new RelayCommand(async () => await ImportFolderAsync());
         PreviousSliceCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.MoveSlice(-1)), () => SeriesItems.Count > 0);
         NextSliceCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.MoveSlice(1)), () => SeriesItems.Count > 0);
         PanToolCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.Pan)));
         WindowLevelToolCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.WindowLevel)));
         LengthToolCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.MeasureLength)));
+        ZoomInCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.Zoom(1.2)), () => SeriesItems.Count > 0);
+        ZoomOutCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.Zoom(1.0 / 1.2)), () => SeriesItems.Count > 0);
+        SoftTissuePresetCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.ApplyWindowLevelPreset(new(400, 40))), () => SeriesItems.Count > 0);
+        LungPresetCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.ApplyWindowLevelPreset(new(1500, -600))), () => SeriesItems.Count > 0);
+        BonePresetCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.ApplyWindowLevelPreset(new(2000, 300))), () => SeriesItems.Count > 0);
+        IncreaseWindowCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.AdjustWindowLevel(50, 0)), () => SeriesItems.Count > 0);
+        DecreaseWindowCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.AdjustWindowLevel(-50, 0)), () => SeriesItems.Count > 0);
+        IncreaseLevelCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.AdjustWindowLevel(0, 25)), () => SeriesItems.Count > 0);
+        DecreaseLevelCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.AdjustWindowLevel(0, -25)), () => SeriesItems.Count > 0);
         ResetViewCommand = new RelayCommand(() => ApplySnapshot(_workspaceService.ResetView()));
     }
 
@@ -157,6 +168,24 @@ public sealed class MainViewModel : ObservableObject
 
     public RelayCommand LengthToolCommand { get; }
 
+    public RelayCommand ZoomInCommand { get; }
+
+    public RelayCommand ZoomOutCommand { get; }
+
+    public RelayCommand SoftTissuePresetCommand { get; }
+
+    public RelayCommand LungPresetCommand { get; }
+
+    public RelayCommand BonePresetCommand { get; }
+
+    public RelayCommand IncreaseWindowCommand { get; }
+
+    public RelayCommand DecreaseWindowCommand { get; }
+
+    public RelayCommand IncreaseLevelCommand { get; }
+
+    public RelayCommand DecreaseLevelCommand { get; }
+
     public RelayCommand ResetViewCommand { get; }
 
     public async Task InitializeAsync()
@@ -171,6 +200,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void ApplySnapshot(WorkspaceSnapshot snapshot)
     {
+        // 所有界面状态都从同一份快照同步，便于后续把状态来源收敛到 Application 层。
         _isApplyingSnapshot = true;
         SeriesItems.Clear();
         foreach (var item in snapshot.SeriesItems)
@@ -196,6 +226,15 @@ public sealed class MainViewModel : ObservableObject
 
         PreviousSliceCommand.NotifyCanExecuteChanged();
         NextSliceCommand.NotifyCanExecuteChanged();
+        ZoomInCommand.NotifyCanExecuteChanged();
+        ZoomOutCommand.NotifyCanExecuteChanged();
+        SoftTissuePresetCommand.NotifyCanExecuteChanged();
+        LungPresetCommand.NotifyCanExecuteChanged();
+        BonePresetCommand.NotifyCanExecuteChanged();
+        IncreaseWindowCommand.NotifyCanExecuteChanged();
+        DecreaseWindowCommand.NotifyCanExecuteChanged();
+        IncreaseLevelCommand.NotifyCanExecuteChanged();
+        DecreaseLevelCommand.NotifyCanExecuteChanged();
     }
 
     private static BitmapSource? CreateBitmapSource(ViewportImageData? image)
@@ -205,6 +244,7 @@ public sealed class MainViewModel : ObservableObject
             return null;
         }
 
+        // 这里使用 Gray8 直接生成 BitmapSource，先保持链路简单，后续再引入更复杂的渲染控件。
         var bitmap = BitmapSource.Create(
             image.Width,
             image.Height,

@@ -34,6 +34,32 @@ public sealed class DicomViewportImageServiceTests
         }
     }
 
+    [Fact]
+    public void TryLoad_WithDifferentWindowLevels_ChangesPixelMapping()
+    {
+        var service = new DicomViewportImageService();
+        var tempFilePath = Path.Combine(Path.GetTempPath(), $"dicomviewer-{Guid.NewGuid():N}.dcm");
+
+        try
+        {
+            CreateTestDicom(tempFilePath);
+
+            var narrowWindow = service.TryLoad(tempFilePath, 0, new WindowLevel(64, 32));
+            var wideWindow = service.TryLoad(tempFilePath, 0, new WindowLevel(255, 127.5));
+
+            Assert.NotNull(narrowWindow);
+            Assert.NotNull(wideWindow);
+            Assert.NotEqual(narrowWindow!.Pixels[1], wideWindow!.Pixels[1]);
+        }
+        finally
+        {
+            if (File.Exists(tempFilePath))
+            {
+                File.Delete(tempFilePath);
+            }
+        }
+    }
+
     private static void CreateTestDicom(string filePath)
     {
         var dataset = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)

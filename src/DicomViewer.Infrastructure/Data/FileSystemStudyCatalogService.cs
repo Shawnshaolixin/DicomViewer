@@ -84,6 +84,7 @@ public sealed class FileSystemStudyCatalogService : IStudyCatalogService
 
     private static IReadOnlyList<Patient> BuildPatients(IReadOnlyList<DicomRecord> records)
     {
+        // 这里把扁平文件记录重新组装成 Patient -> Study -> Series -> Instance 的层级结构。
         return records
             .GroupBy(record => new { record.PatientId, record.PatientName })
             .OrderBy(group => group.Key.PatientName)
@@ -236,6 +237,7 @@ public sealed class FileSystemStudyCatalogService : IStudyCatalogService
 
     private static ModalityType MapModality(string modality)
     {
+        // 先覆盖当前项目会遇到的常见模态，未知值统一回退为 Unknown。
         return modality.ToUpperInvariant() switch
         {
             "CT" => ModalityType.CT,

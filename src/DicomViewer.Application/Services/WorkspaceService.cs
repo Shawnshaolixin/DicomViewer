@@ -20,6 +20,7 @@ public sealed class WorkspaceService
     private int _activeSliceIndex;
     private ViewerToolMode _toolMode = ViewerToolMode.Pan;
     private ViewTransform _viewTransform = ViewTransform.Default;
+    private WindowLevel? _activeWindowLevel;
     private string _workspaceNote = "当前显示内置样例数据。";
     private string _workspaceStatus = "Sample workspace loaded";
 
@@ -35,6 +36,7 @@ public sealed class WorkspaceService
 
     public async Task<WorkspaceSnapshot> LoadAsync(string? sourcePath = null, CancellationToken cancellationToken = default)
     {
+        // 这里统一负责“工作区重载”，上层 UI 不需要关心数据来自样例还是实际目录。
         _patients = await _studyCatalogService.LoadAsync(sourcePath, cancellationToken);
         _seriesList = _patients
             .SelectMany(patient => patient.Studies)
@@ -57,6 +59,7 @@ public sealed class WorkspaceService
         _activeSliceIndex = 0;
         _toolMode = ViewerToolMode.Pan;
         _viewTransform = ViewTransform.Default;
+        _activeWindowLevel = null;
 
         return BuildSnapshot();
     }
@@ -69,6 +72,7 @@ public sealed class WorkspaceService
 
         _activeSeriesIndex = index;
         _activeSliceIndex = 0;
+        _activeWindowLevel = null;
         return BuildSnapshot();
     }
 
@@ -92,7 +96,31 @@ public sealed class WorkspaceService
 
     public WorkspaceSnapshot ResetView()
     {
+        // 重置时同时恢复缩放和窗宽窗位，便于回到该序列的默认显示状态。
         _viewTransform = ViewTransform.Default;
+        _activeWindowLevel = null;
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot Zoom(double factor)
+    {
+        var nextZoom = Math.Clamp(_viewTransform.Zoom * factor, 0.25, 8.0);
+        _viewTransform = _viewTransform with { Zoom = nextZoom };
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot ApplyWindowLevelPreset(WindowLevel windowLevel)
+    {
+        _activeWindowLevel = windowLevel;
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot AdjustWindowLevel(double widthDelta, double centerDelta)
+    {
+        var baseWindowLevel = GetEffectiveWindowLevel();
+        var nextWidth = Math.Max(1.0, baseWindowLevel.Width + widthDelta);
+        var nextCenter = baseWindowLevel.Center + centerDelta;
+        _activeWindowLevel = new WindowLevel(nextWidth, nextCenter);
         return BuildSnapshot();
     }
 
@@ -107,15 +135,19 @@ public sealed class WorkspaceService
         var patient = _patients.First();
         var study = patient.Studies.First();
         var image = series.Instances[_activeSliceIndex];
+        var effectiveWindowLevel = GetEffectiveWindowLevel(image);
+        // 渲染层只负责生成当前视口描述；真正的像素缓冲由图像服务提供。
         var renderedViewport = _imageRenderService.Render(new RenderRequest(
             series,
             image,
             _activeSliceIndex,
             series.Instances.Count,
             _toolMode,
-            image.DefaultWindowLevel,
+            effectiveWindowLevel,
             _viewTransform));
-        var viewportImage = _viewportImageService.TryLoad(image.FilePath, 0, image.DefaultWindowLevel);
+
+        // 当前版本仅加载单帧灰度图，后续可以在这里扩展多帧和彩色图像。
+        var viewportImage = _viewportImageService.TryLoad(image.FilePath, 0, effectiveWindowLevel);
         var owner = FindOwner(series.SeriesInstanceUid);
         if (owner is not null)
         {
@@ -146,11 +178,21 @@ public sealed class WorkspaceService
             patient.PatientName,
             $"{study.StudyDescription} {studyDateText}".Trim(),
             _toolMode.ToString(),
-            image.DefaultWindowLevel.ToString(),
+            effectiveWindowLevel.ToString(),
             $"Slice {_activeSliceIndex + 1} / {series.Instances.Count}",
             $"Zoom {_viewTransform.Zoom:0.00}x | Pan ({_viewTransform.PanX:0},{_viewTransform.PanY:0})",
             notesText
         );
+    }
+
+    private WindowLevel GetEffectiveWindowLevel(ImageInstance? image = null)
+    {
+        if (_activeWindowLevel is not null)
+        {
+            return _activeWindowLevel;
+        }
+
+        return image?.DefaultWindowLevel ?? new WindowLevel(255, 127.5);
     }
 
     private (Patient Patient, Study Study)? FindOwner(string seriesInstanceUid)

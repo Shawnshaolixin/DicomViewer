@@ -21,6 +21,8 @@ public sealed class DicomViewportImageService : IViewportImageService
             var dicomFile = DicomFile.Open(filePath);
             var dataset = dicomFile.Dataset;
             var pixelData = DicomPixelData.Create(dataset);
+
+            // 先只支持单样本灰度图，避免在学习阶段过早引入彩色与调色板逻辑。
             if (pixelData.NumberOfFrames == 0 || pixelData.SamplesPerPixel != 1)
             {
                 return null;
@@ -103,6 +105,7 @@ public sealed class DicomViewportImageService : IViewportImageService
 
     private static byte MapToByte(double sourceValue, WindowLevel windowLevel, bool invert, double slope, double intercept)
     {
+        // 先应用 modality LUT 的线性部分，再做窗宽窗位压缩到 0-255，便于 WPF 直接显示 Gray8。
         var modalityValue = sourceValue * slope + intercept;
         var width = Math.Max(windowLevel.Width, 1.0);
         var center = windowLevel.Center;
