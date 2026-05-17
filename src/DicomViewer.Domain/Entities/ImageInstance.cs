@@ -1,0 +1,22 @@
+using DicomViewer.Domain.ValueObjects;
+
+namespace DicomViewer.Domain.Entities;
+
+public sealed class ImageInstance
+{
+    public required string SopInstanceUid { get; init; }
+
+    public required string FilePath { get; init; }
+
+    public int InstanceNumber { get; init; }
+
+    public int Width { get; init; }
+
+    public int Height { get; init; }
+
+    public int FrameCount { get; init; }
+
+    public required PixelSpacing PixelSpacing { get; init; }
+
+    public required WindowLevel DefaultWindowLevel { get; init; }
+}

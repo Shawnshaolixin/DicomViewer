@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DicomViewer.Application/DicomViewer.Application.csproj" />
+    <Project Path="src/DicomViewer.Domain/DicomViewer.Domain.csproj" />
+    <Project Path="src/DicomViewer.Infrastructure/DicomViewer.Infrastructure.csproj" />
+    <Project Path="src/DicomViewer.Rendering/DicomViewer.Rendering.csproj" />
+    <Project Path="src/DicomViewer.Shared/DicomViewer.Shared.csproj" />
+    <Project Path="src/DicomViewer.Wpf/DicomViewer.Wpf.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DicomViewer.Tests/DicomViewer.Tests.csproj" />
+  </Folder>
+</Solution>
