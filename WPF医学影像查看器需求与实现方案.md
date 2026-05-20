@@ -46,7 +46,7 @@
 
 依赖方向如下：
 
-1. Wpf -> Application, Rendering, Shared
+1. Wpf -> Application, Rendering, Prism
 2. Application -> Domain, Rendering, Shared
 3. Domain -> Shared
 4. Infrastructure -> Application, Domain, Rendering, Shared
@@ -56,7 +56,7 @@
 
 ### 4.1 Wpf
 
-负责主窗口、数据绑定、命令交互和工作区展示。
+负责主窗口、Prism 容器接入、数据绑定、命令交互和工作区展示。
 
 ### 4.2 Application
 
@@ -82,14 +82,15 @@
 2. 分层项目及引用关系
 3. 根目录需求与架构文档
 4. 主窗口阅片器布局
-5. 样例患者、检查、序列和切片数据
-6. DICOM 目录导入与元数据分组
-7. 单帧灰度图像的真实像素显示
-8. 窗宽窗位预设与实时调整
-9. 视口缩放状态控制
-10. 工作区服务与序列切换逻辑
-11. 工具模式切换和切片导航命令
-12. 占位渲染结果展示
+5. Prism 容器启动与 ViewModel 自动绑定
+6. 样例患者、检查、序列和切片数据
+7. DICOM 目录导入与元数据分组
+8. 单帧灰度图像的真实像素显示
+9. 窗宽窗位预设与实时调整
+10. 视口缩放状态控制
+11. 工作区服务与序列切换逻辑
+12. 工具模式切换和切片导航命令
+13. 占位渲染结果展示
 
 ## 6. 当前运行效果
 
