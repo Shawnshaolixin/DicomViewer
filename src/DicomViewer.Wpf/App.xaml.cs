@@ -1,27 +1,46 @@
-﻿using System.Windows;
+﻿using DicomViewer.Application.Abstractions;
 using DicomViewer.Application.Services;
 using DicomViewer.Infrastructure.Data;
 using DicomViewer.Infrastructure.Imaging;
+using DicomViewer.Rendering.Abstractions;
 using DicomViewer.Rendering.Services;
 using DicomViewer.Wpf.ViewModels;
+using Prism.DryIoc;
+using Prism.Ioc;
+using Prism.Mvvm;
 
 namespace DicomViewer.Wpf;
 
-public partial class App : System.Windows.Application
+public partial class App : PrismApplication
 {
-	protected override void OnStartup(StartupEventArgs e)
-	{
-		base.OnStartup(e);
+    protected override System.Windows.Window CreateShell()
+    {
+        return Container.Resolve<MainWindow>();
+    }
 
-		// 当前先用手工组装依赖，后续如果模块继续增多再切换到 DI 容器。
-		var viewModel = new MainViewModel(new WorkspaceService(
-			new FileSystemStudyCatalogService(),
-			new PlaceholderRenderService(),
-			new DicomViewportImageService()));
+    protected override void RegisterTypes(IContainerRegistry containerRegistry)
+    {
+        containerRegistry.RegisterSingleton<IStudyCatalogService, FileSystemStudyCatalogService>();
+        containerRegistry.RegisterSingleton<IImageRenderService, PlaceholderRenderService>();
+        containerRegistry.RegisterSingleton<IViewportImageService, DicomViewportImageService>();
+        containerRegistry.RegisterSingleton<WorkspaceService>();
+        containerRegistry.RegisterSingleton<MainViewModel>();
+        containerRegistry.RegisterSingleton<MainWindow>();
+    }
 
-		var mainWindow = new MainWindow(viewModel);
-		MainWindow = mainWindow;
-		mainWindow.Show();
-	}
+    protected override void ConfigureViewModelLocator()
+    {
+        base.ConfigureViewModelLocator();
+        ViewModelLocationProvider.Register<MainWindow, MainViewModel>();
+    }
+
+    protected override async void OnInitialized()
+    {
+        base.OnInitialized();
+
+        if (MainWindow?.DataContext is MainViewModel viewModel)
+        {
+            await viewModel.InitializeAsync();
+        }
+    }
 }
-
