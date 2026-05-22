@@ -282,6 +282,7 @@ public sealed class WorkspaceService
             effectiveWindowLevel.ToString(),
             $"Slice {_activeSliceIndex + 1} / {series.Instances.Count}",
             $"Frame {_activeFrameIndex + 1} / {frameCount}",
+            frameCount,
             $"Zoom {_viewTransform.Zoom:0.00}x | Pan ({_viewTransform.PanX:0},{_viewTransform.PanY:0})",
             notesText,
             GetMeasurementsForSnapshot(series.SeriesInstanceUid, image));
@@ -477,6 +478,7 @@ public sealed class WorkspaceService
             "WW 0 / WL 0",
             "Slice 0 / 0",
             "Frame 0 / 0",
+            0,
             "Zoom 1.00x | Pan (0,0)",
             _workspaceNote,
             Array.Empty<MeasurementAnnotation>());

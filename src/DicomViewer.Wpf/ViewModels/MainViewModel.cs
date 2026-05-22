@@ -28,6 +28,7 @@ public sealed class MainViewModel : BindableBase
     private string _windowText = "WW 0 / WL 0";
     private string _sliceText = "Slice 0 / 0";
     private string _frameText = "Frame 0 / 0";
+    private int _frameCount;
     private string _viewText = "Zoom 1.00x | Pan (0,0)";
     private string _notesText = "Viewer shell not loaded yet.";
     private ViewerToolMode _currentToolMode = ViewerToolMode.None;
@@ -71,7 +72,7 @@ public sealed class MainViewModel : BindableBase
 
     public bool HasSeriesItems => SeriesItems.Count > 0;
 
-    public bool HasMultipleFrames => HasSeriesItems && !string.Equals(FrameText, "Frame 0 / 0", StringComparison.Ordinal) && !FrameText.EndsWith("/ 1", StringComparison.Ordinal);
+    public bool HasMultipleFrames => HasSeriesItems && FrameCount > 1;
 
     public string ImportPath
     {
@@ -170,6 +171,18 @@ public sealed class MainViewModel : BindableBase
         private set
         {
             if (SetProperty(ref _frameText, value))
+            {
+                RaisePropertyChanged(nameof(HasMultipleFrames));
+            }
+        }
+    }
+
+    public int FrameCount
+    {
+        get => _frameCount;
+        private set
+        {
+            if (SetProperty(ref _frameCount, value))
             {
                 RaisePropertyChanged(nameof(HasMultipleFrames));
             }
@@ -355,6 +368,7 @@ public sealed class MainViewModel : BindableBase
         WindowText = snapshot.WindowText;
         SliceText = snapshot.SliceText;
         FrameText = snapshot.FrameText;
+        FrameCount = snapshot.FrameCount;
         ViewText = snapshot.ViewText;
         NotesText = snapshot.NotesText;
 

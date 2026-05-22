@@ -19,6 +19,7 @@ public sealed record WorkspaceSnapshot(
     string WindowText,
     string SliceText,
     string FrameText,
+    int FrameCount,
     string ViewText,
     string NotesText,
     IReadOnlyList<MeasurementAnnotation> Measurements);
