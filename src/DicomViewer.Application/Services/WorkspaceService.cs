@@ -14,13 +14,17 @@ public sealed class WorkspaceService
     private readonly IImageRenderService _imageRenderService;
     private readonly IViewportImageService _viewportImageService;
 
+    private readonly Dictionary<string, List<MeasurementAnnotation>> _measurementsBySeries = new();
+
     private IReadOnlyList<Patient> _patients = Array.Empty<Patient>();
     private IReadOnlyList<Series> _seriesList = Array.Empty<Series>();
     private int _activeSeriesIndex;
     private int _activeSliceIndex;
+    private int _activeFrameIndex;
     private ViewerToolMode _toolMode = ViewerToolMode.Pan;
     private ViewTransform _viewTransform = ViewTransform.Default;
     private WindowLevel? _activeWindowLevel;
+    private MeasurementDraft? _measurementDraft;
     private string _workspaceNote = "当前显示内置样例数据。";
     private string _workspaceStatus = "Sample workspace loaded";
 
@@ -36,30 +40,23 @@ public sealed class WorkspaceService
 
     public async Task<WorkspaceSnapshot> LoadAsync(string? sourcePath = null, CancellationToken cancellationToken = default)
     {
-        // 这里统一负责“工作区重载”，上层 UI 不需要关心数据来自样例还是实际目录。
-        _patients = await _studyCatalogService.LoadAsync(sourcePath, cancellationToken);
+        var loadResult = await _studyCatalogService.LoadAsync(sourcePath, cancellationToken);
+        _patients = loadResult.Patients;
         _seriesList = _patients
             .SelectMany(patient => patient.Studies)
             .SelectMany(study => study.SeriesList)
             .ToList();
 
-        _workspaceNote = string.IsNullOrWhiteSpace(sourcePath)
-            ? "当前显示内置样例数据。"
-            : _seriesList.Count == 0
-                ? $"目录中未找到可解析的 DICOM 文件: {sourcePath}"
-                : $"已从目录加载 {_seriesList.Count} 个序列: {sourcePath}";
-
-        _workspaceStatus = string.IsNullOrWhiteSpace(sourcePath)
-            ? "Sample workspace loaded"
-            : _seriesList.Count == 0
-                ? "No DICOM series found"
-                : "DICOM metadata imported";
+        _workspaceNote = loadResult.NoteText;
+        _workspaceStatus = loadResult.StatusText;
 
         _activeSeriesIndex = 0;
         _activeSliceIndex = 0;
+        _activeFrameIndex = 0;
         _toolMode = ViewerToolMode.Pan;
         _viewTransform = ViewTransform.Default;
         _activeWindowLevel = null;
+        _measurementDraft = null;
 
         return BuildSnapshot();
     }
@@ -72,7 +69,9 @@ public sealed class WorkspaceService
 
         _activeSeriesIndex = index;
         _activeSliceIndex = 0;
+        _activeFrameIndex = 0;
         _activeWindowLevel = null;
+        _measurementDraft = null;
         return BuildSnapshot();
     }
 
@@ -85,20 +84,40 @@ public sealed class WorkspaceService
         }
 
         _activeSliceIndex = Math.Clamp(_activeSliceIndex + delta, 0, series.Instances.Count - 1);
+        _activeFrameIndex = 0;
+        _measurementDraft = null;
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot MoveFrame(int delta)
+    {
+        var image = GetActiveImage();
+        if (image is null)
+        {
+            return BuildEmptySnapshot();
+        }
+
+        var frameCount = Math.Max(image.FrameCount, 1);
+        _activeFrameIndex = Math.Clamp(_activeFrameIndex + delta, 0, frameCount - 1);
         return BuildSnapshot();
     }
 
     public WorkspaceSnapshot SetTool(ViewerToolMode toolMode)
     {
         _toolMode = toolMode;
+        if (!IsMeasurementTool(toolMode))
+        {
+            _measurementDraft = null;
+        }
+
         return BuildSnapshot();
     }
 
     public WorkspaceSnapshot ResetView()
     {
-        // 重置时同时恢复缩放和窗宽窗位，便于回到该序列的默认显示状态。
         _viewTransform = ViewTransform.Default;
         _activeWindowLevel = null;
+        _measurementDraft = null;
         return BuildSnapshot();
     }
 
@@ -106,6 +125,17 @@ public sealed class WorkspaceService
     {
         var nextZoom = Math.Clamp(_viewTransform.Zoom * factor, 0.25, 8.0);
         _viewTransform = _viewTransform with { Zoom = nextZoom };
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot Pan(double deltaX, double deltaY)
+    {
+        _viewTransform = _viewTransform with
+        {
+            PanX = _viewTransform.PanX + deltaX,
+            PanY = _viewTransform.PanY + deltaY,
+        };
+
         return BuildSnapshot();
     }
 
@@ -124,6 +154,72 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    public WorkspaceSnapshot AddMeasurementPoint(Point2D point)
+    {
+        if (!IsMeasurementTool(_toolMode))
+        {
+            return BuildSnapshot();
+        }
+
+        var series = GetActiveSeries();
+        var image = GetActiveImage(series);
+        if (series is null || image is null)
+        {
+            return BuildEmptySnapshot();
+        }
+
+        var safePoint = ClampPoint(point, image);
+        var requiredPointCount = GetRequiredMeasurementPointCount(_toolMode);
+
+        if (_measurementDraft is null || _measurementDraft.SeriesInstanceUid != series.SeriesInstanceUid || _measurementDraft.ToolMode != _toolMode)
+        {
+            _measurementDraft = new MeasurementDraft(series.SeriesInstanceUid, _toolMode, new[] { safePoint }, safePoint);
+            return BuildSnapshot();
+        }
+
+        var nextPoints = _measurementDraft.Points.Concat(new[] { safePoint }).Take(requiredPointCount).ToList();
+        if (nextPoints.Count == requiredPointCount)
+        {
+            AddMeasurement(series.SeriesInstanceUid, CreateMeasurementAnnotation(_toolMode, nextPoints, image, isPreview: false));
+            _measurementDraft = null;
+        }
+        else
+        {
+            _measurementDraft = _measurementDraft with { Points = nextPoints, PreviewPoint = safePoint };
+        }
+
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot UpdateMeasurementPreview(Point2D point)
+    {
+        if (_measurementDraft is null)
+        {
+            return BuildSnapshot();
+        }
+
+        var image = GetActiveImage();
+        if (image is null)
+        {
+            return BuildEmptySnapshot();
+        }
+
+        _measurementDraft = _measurementDraft with { PreviewPoint = ClampPoint(point, image) };
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot ClearMeasurements()
+    {
+        var series = GetActiveSeries();
+        if (series is not null)
+        {
+            _measurementsBySeries.Remove(series.SeriesInstanceUid);
+        }
+
+        _measurementDraft = null;
+        return BuildSnapshot();
+    }
+
     private WorkspaceSnapshot BuildSnapshot()
     {
         var series = GetActiveSeries();
@@ -135,19 +231,21 @@ public sealed class WorkspaceService
         var patient = _patients.First();
         var study = patient.Studies.First();
         var image = series.Instances[_activeSliceIndex];
+        var frameCount = Math.Max(image.FrameCount, 1);
+        _activeFrameIndex = Math.Clamp(_activeFrameIndex, 0, frameCount - 1);
         var effectiveWindowLevel = GetEffectiveWindowLevel(image);
-        // 渲染层只负责生成当前视口描述；真正的像素缓冲由图像服务提供。
         var renderedViewport = _imageRenderService.Render(new RenderRequest(
             series,
             image,
             _activeSliceIndex,
             series.Instances.Count,
+            _activeFrameIndex,
+            frameCount,
             _toolMode,
             effectiveWindowLevel,
             _viewTransform));
 
-        // 当前版本仅加载单帧灰度图，后续可以在这里扩展多帧和彩色图像。
-        var viewportImage = _viewportImageService.TryLoad(image.FilePath, 0, effectiveWindowLevel);
+        var viewportLoad = _viewportImageService.TryLoad(image.FilePath, _activeFrameIndex, effectiveWindowLevel);
         var owner = FindOwner(series.SeriesInstanceUid);
         if (owner is not null)
         {
@@ -156,12 +254,13 @@ public sealed class WorkspaceService
         }
 
         var studyDateText = study.StudyDate?.ToString("yyyy-MM-dd") ?? string.Empty;
-        var notesText = viewportImage is null
-            ? $"{_workspaceNote} 当前序列尚未生成位图，可能是样例数据、文件缺失或暂不支持的像素格式。"
-            : $"{_workspaceNote} 当前视口已显示单帧灰度图像。";
-        var placeholderText = viewportImage is null
-            ? $"{renderedViewport.PlaceholderText}\nNo grayscale preview available"
-            : renderedViewport.PlaceholderText;
+        var measurementGuide = GetMeasurementGuideText();
+        var notesText = viewportLoad.Succeeded
+            ? $"{_workspaceNote} {viewportLoad.Message}{measurementGuide}".Trim()
+            : $"{_workspaceNote} {viewportLoad.Message}{measurementGuide}".Trim();
+        var placeholderText = viewportLoad.Succeeded
+            ? renderedViewport.PlaceholderText
+            : $"{renderedViewport.PlaceholderText}\n{viewportLoad.Message}";
 
         return new WorkspaceSnapshot(
             _seriesList.Select(seriesItem => new SeriesSummary(
@@ -170,19 +269,22 @@ public sealed class WorkspaceService
                 seriesItem.Modality,
                 seriesItem.Instances.Count)).ToList(),
             series.SeriesInstanceUid,
-            viewportImage,
+            viewportLoad.Image,
+            _viewTransform,
+            _toolMode,
             renderedViewport.Title,
             renderedViewport.Subtitle,
             placeholderText,
-            _workspaceStatus,
+            renderedViewport.StatusText,
             patient.PatientName,
             $"{study.StudyDescription} {studyDateText}".Trim(),
             _toolMode.ToString(),
             effectiveWindowLevel.ToString(),
             $"Slice {_activeSliceIndex + 1} / {series.Instances.Count}",
+            $"Frame {_activeFrameIndex + 1} / {frameCount}",
             $"Zoom {_viewTransform.Zoom:0.00}x | Pan ({_viewTransform.PanX:0},{_viewTransform.PanY:0})",
-            notesText
-        );
+            notesText,
+            GetMeasurementsForSnapshot(series.SeriesInstanceUid, image));
     }
 
     private WindowLevel GetEffectiveWindowLevel(ImageInstance? image = null)
@@ -221,12 +323,150 @@ public sealed class WorkspaceService
         return _seriesList[Math.Clamp(_activeSeriesIndex, 0, _seriesList.Count - 1)];
     }
 
+    private ImageInstance? GetActiveImage(Series? series = null)
+    {
+        series ??= GetActiveSeries();
+        if (series is null || series.Instances.Count == 0)
+        {
+            return null;
+        }
+
+        return series.Instances[Math.Clamp(_activeSliceIndex, 0, series.Instances.Count - 1)];
+    }
+
+    private IReadOnlyList<MeasurementAnnotation> GetMeasurementsForSnapshot(string seriesInstanceUid, ImageInstance image)
+    {
+        var measurements = new List<MeasurementAnnotation>();
+        if (_measurementsBySeries.TryGetValue(seriesInstanceUid, out var storedMeasurements))
+        {
+            measurements.AddRange(storedMeasurements);
+        }
+
+        var previewMeasurement = BuildPreviewMeasurement(image);
+        if (previewMeasurement is not null)
+        {
+            measurements.Add(previewMeasurement);
+        }
+
+        return measurements;
+    }
+
+    private MeasurementAnnotation? BuildPreviewMeasurement(ImageInstance image)
+    {
+        if (_measurementDraft is null || _measurementDraft.Points.Count == 0)
+        {
+            return null;
+        }
+
+        return _measurementDraft.ToolMode switch
+        {
+            ViewerToolMode.MeasureLength when _measurementDraft.Points.Count >= 1 => CreateMeasurementAnnotation(
+                _measurementDraft.ToolMode,
+                new[] { _measurementDraft.Points[0], _measurementDraft.PreviewPoint },
+                image,
+                isPreview: true),
+            ViewerToolMode.MeasureAngle when _measurementDraft.Points.Count == 1 => CreateMeasurementAnnotation(
+                _measurementDraft.ToolMode,
+                new[] { _measurementDraft.Points[0], _measurementDraft.PreviewPoint },
+                image,
+                isPreview: true),
+            ViewerToolMode.MeasureAngle when _measurementDraft.Points.Count >= 2 => CreateMeasurementAnnotation(
+                _measurementDraft.ToolMode,
+                new[] { _measurementDraft.Points[0], _measurementDraft.Points[1], _measurementDraft.PreviewPoint },
+                image,
+                isPreview: true),
+            _ => null,
+        };
+    }
+
+    private static MeasurementAnnotation CreateMeasurementAnnotation(
+        ViewerToolMode toolMode,
+        IReadOnlyList<Point2D> points,
+        ImageInstance image,
+        bool isPreview)
+    {
+        var label = toolMode switch
+        {
+            ViewerToolMode.MeasureLength when points.Count >= 2 => $"{CalculateLength(points[0], points[1], image.PixelSpacing):0.0} mm",
+            ViewerToolMode.MeasureAngle when points.Count >= 3 => $"{CalculateAngle(points[0], points[1], points[2]):0.0}°",
+            _ => string.Empty,
+        };
+
+        return new MeasurementAnnotation(Guid.NewGuid(), label, points.ToArray(), isPreview);
+    }
+
+    private static double CalculateLength(Point2D start, Point2D end, PixelSpacing pixelSpacing)
+    {
+        var deltaX = (end.X - start.X) * pixelSpacing.Column;
+        var deltaY = (end.Y - start.Y) * pixelSpacing.Row;
+        return Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+    }
+
+    private static double CalculateAngle(Point2D first, Point2D vertex, Point2D third)
+    {
+        var vectorA = (X: first.X - vertex.X, Y: first.Y - vertex.Y);
+        var vectorB = (X: third.X - vertex.X, Y: third.Y - vertex.Y);
+        var magnitudeA = Math.Sqrt((vectorA.X * vectorA.X) + (vectorA.Y * vectorA.Y));
+        var magnitudeB = Math.Sqrt((vectorB.X * vectorB.X) + (vectorB.Y * vectorB.Y));
+        if (magnitudeA <= double.Epsilon || magnitudeB <= double.Epsilon)
+        {
+            return 0;
+        }
+
+        var cosine = ((vectorA.X * vectorB.X) + (vectorA.Y * vectorB.Y)) / (magnitudeA * magnitudeB);
+        cosine = Math.Clamp(cosine, -1.0, 1.0);
+        return Math.Acos(cosine) * 180.0 / Math.PI;
+    }
+
+    private static Point2D ClampPoint(Point2D point, ImageInstance image)
+    {
+        var maxX = Math.Max(0, image.Width - 1);
+        var maxY = Math.Max(0, image.Height - 1);
+        return new Point2D(
+            Math.Clamp(point.X, 0, maxX),
+            Math.Clamp(point.Y, 0, maxY));
+    }
+
+    private static bool IsMeasurementTool(ViewerToolMode toolMode)
+    {
+        return toolMode is ViewerToolMode.MeasureLength or ViewerToolMode.MeasureAngle;
+    }
+
+    private static int GetRequiredMeasurementPointCount(ViewerToolMode toolMode)
+    {
+        return toolMode == ViewerToolMode.MeasureAngle ? 3 : 2;
+    }
+
+    private void AddMeasurement(string seriesInstanceUid, MeasurementAnnotation measurement)
+    {
+        if (!_measurementsBySeries.TryGetValue(seriesInstanceUid, out var measurements))
+        {
+            measurements = new List<MeasurementAnnotation>();
+            _measurementsBySeries[seriesInstanceUid] = measurements;
+        }
+
+        measurements.Add(measurement with { IsPreview = false });
+    }
+
+    private string GetMeasurementGuideText()
+    {
+        return _measurementDraft switch
+        {
+            { ToolMode: ViewerToolMode.MeasureLength, Points.Count: 1 } => " 长度测量：移动鼠标预览，单击第二个点完成。",
+            { ToolMode: ViewerToolMode.MeasureAngle, Points.Count: 1 } => " 角度测量：单击顶点位置。",
+            { ToolMode: ViewerToolMode.MeasureAngle, Points.Count: 2 } => " 角度测量：移动鼠标预览，单击第三个点完成。",
+            _ => string.Empty,
+        };
+    }
+
     private WorkspaceSnapshot BuildEmptySnapshot()
     {
         return new WorkspaceSnapshot(
             Array.Empty<SeriesSummary>(),
             string.Empty,
             null,
+            ViewTransform.Default,
+            ViewerToolMode.None,
             "No series loaded",
             "Import DICOM studies to begin",
             "Waiting for study import",
@@ -236,8 +476,15 @@ public sealed class WorkspaceService
             ViewerToolMode.None.ToString(),
             "WW 0 / WL 0",
             "Slice 0 / 0",
+            "Frame 0 / 0",
             "Zoom 1.00x | Pan (0,0)",
-            _workspaceNote
-        );
+            _workspaceNote,
+            Array.Empty<MeasurementAnnotation>());
     }
+
+    private sealed record MeasurementDraft(
+        string SeriesInstanceUid,
+        ViewerToolMode ToolMode,
+        IReadOnlyList<Point2D> Points,
+        Point2D PreviewPoint);
 }

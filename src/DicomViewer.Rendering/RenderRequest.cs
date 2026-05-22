@@ -9,6 +9,8 @@ public sealed record RenderRequest(
     ImageInstance Image,
     int SliceIndex,
     int SliceCount,
+    int FrameIndex,
+    int FrameCount,
     ViewerToolMode ToolMode,
     WindowLevel WindowLevel,
     ViewTransform ViewTransform);

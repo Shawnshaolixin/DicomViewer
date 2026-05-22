@@ -9,11 +9,12 @@ public sealed class FileSystemStudyCatalogServiceTests
     {
         var service = new FileSystemStudyCatalogService();
 
-        var patients = await service.LoadAsync();
+        var result = await service.LoadAsync();
 
-        Assert.NotEmpty(patients);
-        Assert.NotEmpty(patients[0].Studies);
-        Assert.NotEmpty(patients[0].Studies[0].SeriesList);
+        Assert.NotEmpty(result.Patients);
+        Assert.NotEmpty(result.Patients[0].Studies);
+        Assert.NotEmpty(result.Patients[0].Studies[0].SeriesList);
+        Assert.True(result.IsSampleData);
     }
 
     [Fact]
@@ -24,9 +25,11 @@ public sealed class FileSystemStudyCatalogServiceTests
 
         try
         {
-            var patients = await service.LoadAsync(directory.FullName);
+            var result = await service.LoadAsync(directory.FullName);
 
-            Assert.Empty(patients);
+            Assert.Empty(result.Patients);
+            Assert.Equal("No DICOM series found", result.StatusText);
+            Assert.Contains("未找到可解析的 DICOM 文件", result.NoteText);
         }
         finally
         {
