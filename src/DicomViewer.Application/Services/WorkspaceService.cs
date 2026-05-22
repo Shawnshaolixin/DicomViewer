@@ -10,6 +10,8 @@ namespace DicomViewer.Application.Services;
 
 public sealed class WorkspaceService
 {
+    private const double MinimumVectorMagnitude = 1e-10;
+
     private readonly IStudyCatalogService _studyCatalogService;
     private readonly IImageRenderService _imageRenderService;
     private readonly IViewportImageService _viewportImageService;
@@ -409,7 +411,7 @@ public sealed class WorkspaceService
         var vectorB = (X: third.X - vertex.X, Y: third.Y - vertex.Y);
         var magnitudeA = Math.Sqrt((vectorA.X * vectorA.X) + (vectorA.Y * vectorA.Y));
         var magnitudeB = Math.Sqrt((vectorB.X * vectorB.X) + (vectorB.Y * vectorB.Y));
-        if (magnitudeA <= 1e-10 || magnitudeB <= 1e-10)
+        if (magnitudeA <= MinimumVectorMagnitude || magnitudeB <= MinimumVectorMagnitude)
         {
             return 0;
         }
