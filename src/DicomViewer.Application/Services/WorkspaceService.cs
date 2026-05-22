@@ -409,7 +409,7 @@ public sealed class WorkspaceService
         var vectorB = (X: third.X - vertex.X, Y: third.Y - vertex.Y);
         var magnitudeA = Math.Sqrt((vectorA.X * vectorA.X) + (vectorA.Y * vectorA.Y));
         var magnitudeB = Math.Sqrt((vectorB.X * vectorB.X) + (vectorB.Y * vectorB.Y));
-        if (magnitudeA <= double.Epsilon || magnitudeB <= double.Epsilon)
+        if (magnitudeA <= 1e-10 || magnitudeB <= 1e-10)
         {
             return 0;
         }

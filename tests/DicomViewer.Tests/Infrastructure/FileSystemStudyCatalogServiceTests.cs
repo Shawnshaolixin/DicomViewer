@@ -29,7 +29,7 @@ public sealed class FileSystemStudyCatalogServiceTests
 
             Assert.Empty(result.Patients);
             Assert.Equal("No DICOM series found", result.StatusText);
-            Assert.Contains("未找到可解析的 DICOM 文件", result.NoteText);
+            Assert.Equal($"目录中未找到可解析的 DICOM 文件: {directory.FullName}", result.NoteText);
         }
         finally
         {

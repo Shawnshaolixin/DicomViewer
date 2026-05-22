@@ -108,9 +108,11 @@ public partial class MainWindow : Window
         }
 
         var point = e.GetPosition(ViewportImageCanvas);
+        var maxX = Math.Max(0, viewModel.ImagePixelWidth - 1);
+        var maxY = Math.Max(0, viewModel.ImagePixelHeight - 1);
         return new Point(
-            Math.Clamp(point.X, 0, viewModel.ImagePixelWidth - 1),
-            Math.Clamp(point.Y, 0, viewModel.ImagePixelHeight - 1));
+            Math.Clamp(point.X, 0, maxX),
+            Math.Clamp(point.Y, 0, maxY));
     }
 
     private enum DragMode
