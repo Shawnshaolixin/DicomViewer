@@ -57,8 +57,13 @@
                         <Button Content="长度测量" Command="{Binding LengthToolCommand}" />
                         <Button Content="角度测量" Command="{Binding AngleToolCommand}" />
                         <Button Content="清空标注" Command="{Binding ClearMeasurementsCommand}" />
+                        <Button Content="删除选中标注" Command="{Binding DeleteSelectedMeasurementCommand}" />
                         <Button Content="放大" Command="{Binding ZoomInCommand}" />
                         <Button Content="缩小" Command="{Binding ZoomOutCommand}" />
+                        <Button Content="左旋90°" Command="{Binding RotateLeftCommand}" />
+                        <Button Content="右旋90°" Command="{Binding RotateRightCommand}" />
+                        <Button Content="水平翻转" Command="{Binding FlipHorizontalCommand}" />
+                        <Button Content="垂直翻转" Command="{Binding FlipVerticalCommand}" />
                         <Button Content="上一张" Command="{Binding PreviousSliceCommand}" />
                         <Button Content="下一张" Command="{Binding NextSliceCommand}" />
                         <Button Content="上一帧" Command="{Binding PreviousFrameCommand}" />
@@ -81,7 +86,7 @@
 
                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                     <TextBlock Text="WPF 医学影像查看器" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="支持拖拽平移、滚轮缩放、拖拽调窗、多帧浏览和基础测量标注" Foreground="#A9BAC6" />
+                    <TextBlock Text="支持旋转翻转、拖拽平移、滚轮缩放、拖拽调窗、多帧浏览和基础测量标注" Foreground="#A9BAC6" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -161,6 +166,13 @@
                                         SnapsToDevicePixels="True">
                                     <Canvas.RenderTransform>
                                         <TransformGroup>
+                                            <ScaleTransform ScaleX="{Binding ViewportFlipScaleX}"
+                                                            ScaleY="{Binding ViewportFlipScaleY}"
+                                                            CenterX="{Binding ImageCenterX}"
+                                                            CenterY="{Binding ImageCenterY}" />
+                                            <RotateTransform Angle="{Binding ViewportRotation}"
+                                                             CenterX="{Binding ImageCenterX}"
+                                                             CenterY="{Binding ImageCenterY}" />
                                             <ScaleTransform ScaleX="{Binding ViewportZoom}" ScaleY="{Binding ViewportZoom}" />
                                             <TranslateTransform X="{Binding ViewportPanX}" Y="{Binding ViewportPanY}" />
                                         </TransformGroup>
@@ -232,7 +244,7 @@
                     </Border>
 
                     <TextBlock Grid.Row="2"
-                               Text="交互说明：滚轮缩放；平移模式下拖拽移动；窗宽窗位模式下拖拽调窗；测量模式下单击落点。"
+                               Text="交互说明：滚轮缩放；平移模式下拖拽移动；窗宽窗位模式下拖拽调窗；测量模式下单击落点；已完成标注可在右侧列表删除。"
                                Foreground="#93A6B2" />
                 </Grid>
             </Border>
@@ -259,6 +271,31 @@
                         <TextBlock Text="开发说明" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />
                         <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
                             <TextBlock Text="{Binding NotesText}" TextWrapping="Wrap" Foreground="#C4D2DB" />
+                        </Border>
+
+                        <TextBlock Text="标注列表" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />
+                        <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Bottom"
+                                        Content="删除当前选中标注"
+                                        Command="{Binding DeleteSelectedMeasurementCommand}"
+                                        Margin="0,12,0,0" />
+                                <ListBox ItemsSource="{Binding MeasurementListItems}"
+                                         SelectedItem="{Binding SelectedMeasurement}"
+                                         Background="#10171E"
+                                         BorderThickness="0"
+                                         Foreground="#EAF1F5"
+                                         MinHeight="120">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Points.Count, StringFormat=控制点: {0}}" Foreground="#A9BAC6" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DockPanel>
                         </Border>
 
                         <TextBlock Text="导入提示" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />

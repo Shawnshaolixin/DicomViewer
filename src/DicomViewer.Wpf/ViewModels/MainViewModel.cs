@@ -33,16 +33,21 @@ public sealed class MainViewModel : BindableBase
     private string _notesText = "Viewer shell not loaded yet.";
     private ViewerToolMode _currentToolMode = ViewerToolMode.None;
     private double _viewportZoom = 1.0;
+    private double _viewportRotation;
+    private double _viewportFlipScaleX = 1.0;
+    private double _viewportFlipScaleY = 1.0;
     private double _viewportPanX;
     private double _viewportPanY;
     private double _imagePixelWidth;
     private double _imagePixelHeight;
+    private MeasurementAnnotation? _selectedMeasurement;
 
     public MainViewModel(WorkspaceService workspaceService)
     {
         _workspaceService = workspaceService;
         SeriesItems = new ObservableCollection<SeriesSummary>();
         MeasurementItems = new ObservableCollection<MeasurementOverlayItem>();
+        MeasurementListItems = new ObservableCollection<MeasurementAnnotation>();
 
         ImportFolderCommand = new DelegateCommand(async () => await ImportFolderAsync());
         PreviousSliceCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.MoveSlice(-1))).ObservesCanExecute(() => HasSeriesItems);
@@ -54,8 +59,13 @@ public sealed class MainViewModel : BindableBase
         LengthToolCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.MeasureLength))).ObservesCanExecute(() => HasSeriesItems);
         AngleToolCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.MeasureAngle))).ObservesCanExecute(() => HasSeriesItems);
         ClearMeasurementsCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ClearMeasurements())).ObservesCanExecute(() => HasSeriesItems);
+        DeleteSelectedMeasurementCommand = new DelegateCommand(DeleteSelectedMeasurement).ObservesCanExecute(() => HasSelectedMeasurement);
         ZoomInCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.Zoom(1.2))).ObservesCanExecute(() => HasSeriesItems);
         ZoomOutCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.Zoom(1.0 / 1.2))).ObservesCanExecute(() => HasSeriesItems);
+        RotateLeftCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.Rotate(-90))).ObservesCanExecute(() => HasSeriesItems);
+        RotateRightCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.Rotate(90))).ObservesCanExecute(() => HasSeriesItems);
+        FlipHorizontalCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ToggleFlipHorizontal())).ObservesCanExecute(() => HasSeriesItems);
+        FlipVerticalCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ToggleFlipVertical())).ObservesCanExecute(() => HasSeriesItems);
         SoftTissuePresetCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ApplyWindowLevelPreset(new(400, 40)))).ObservesCanExecute(() => HasSeriesItems);
         LungPresetCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ApplyWindowLevelPreset(new(1500, -600)))).ObservesCanExecute(() => HasSeriesItems);
         BonePresetCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ApplyWindowLevelPreset(new(2000, 300)))).ObservesCanExecute(() => HasSeriesItems);
@@ -70,9 +80,13 @@ public sealed class MainViewModel : BindableBase
 
     public ObservableCollection<MeasurementOverlayItem> MeasurementItems { get; }
 
+    public ObservableCollection<MeasurementAnnotation> MeasurementListItems { get; }
+
     public bool HasSeriesItems => SeriesItems.Count > 0;
 
     public bool HasMultipleFrames => HasSeriesItems && FrameCount > 1;
+
+    public bool HasSelectedMeasurement => SelectedMeasurement is not null;
 
     public string ImportPath
     {
@@ -213,6 +227,24 @@ public sealed class MainViewModel : BindableBase
         private set => SetProperty(ref _viewportZoom, value);
     }
 
+    public double ViewportRotation
+    {
+        get => _viewportRotation;
+        private set => SetProperty(ref _viewportRotation, value);
+    }
+
+    public double ViewportFlipScaleX
+    {
+        get => _viewportFlipScaleX;
+        private set => SetProperty(ref _viewportFlipScaleX, value);
+    }
+
+    public double ViewportFlipScaleY
+    {
+        get => _viewportFlipScaleY;
+        private set => SetProperty(ref _viewportFlipScaleY, value);
+    }
+
     public double ViewportPanX
     {
         get => _viewportPanX;
@@ -237,6 +269,22 @@ public sealed class MainViewModel : BindableBase
         private set => SetProperty(ref _imagePixelHeight, value);
     }
 
+    public double ImageCenterX => ImagePixelWidth / 2.0;
+
+    public double ImageCenterY => ImagePixelHeight / 2.0;
+
+    public MeasurementAnnotation? SelectedMeasurement
+    {
+        get => _selectedMeasurement;
+        set
+        {
+            if (SetProperty(ref _selectedMeasurement, value))
+            {
+                RaisePropertyChanged(nameof(HasSelectedMeasurement));
+            }
+        }
+    }
+
     public DelegateCommand PreviousSliceCommand { get; }
 
     public DelegateCommand ImportFolderCommand { get; }
@@ -257,9 +305,19 @@ public sealed class MainViewModel : BindableBase
 
     public DelegateCommand ClearMeasurementsCommand { get; }
 
+    public DelegateCommand DeleteSelectedMeasurementCommand { get; }
+
     public DelegateCommand ZoomInCommand { get; }
 
     public DelegateCommand ZoomOutCommand { get; }
+
+    public DelegateCommand RotateLeftCommand { get; }
+
+    public DelegateCommand RotateRightCommand { get; }
+
+    public DelegateCommand FlipHorizontalCommand { get; }
+
+    public DelegateCommand FlipVerticalCommand { get; }
 
     public DelegateCommand SoftTissuePresetCommand { get; }
 
@@ -357,8 +415,13 @@ public sealed class MainViewModel : BindableBase
         ViewportImageSource = CreateBitmapSource(snapshot.ViewportImage);
         ImagePixelWidth = snapshot.ViewportImage?.Width ?? 0;
         ImagePixelHeight = snapshot.ViewportImage?.Height ?? 0;
+        RaisePropertyChanged(nameof(ImageCenterX));
+        RaisePropertyChanged(nameof(ImageCenterY));
         CurrentToolMode = snapshot.ToolMode;
         ViewportZoom = snapshot.ViewTransform.Zoom;
+        ViewportRotation = snapshot.ViewTransform.RotationDegrees;
+        ViewportFlipScaleX = snapshot.ViewTransform.FlipHorizontal ? -1.0 : 1.0;
+        ViewportFlipScaleY = snapshot.ViewTransform.FlipVertical ? -1.0 : 1.0;
         ViewportPanX = snapshot.ViewTransform.PanX;
         ViewportPanY = snapshot.ViewTransform.PanY;
         StatusText = snapshot.StatusText;
@@ -372,11 +435,22 @@ public sealed class MainViewModel : BindableBase
         ViewText = snapshot.ViewText;
         NotesText = snapshot.NotesText;
 
+        var selectedMeasurementId = SelectedMeasurement?.Id;
         MeasurementItems.Clear();
         foreach (var measurement in snapshot.Measurements)
         {
             MeasurementItems.Add(ToOverlayItem(measurement));
         }
+
+        MeasurementListItems.Clear();
+        foreach (var measurement in snapshot.Measurements.Where(item => !item.IsPreview))
+        {
+            MeasurementListItems.Add(measurement);
+        }
+
+        SelectedMeasurement = selectedMeasurementId is null
+            ? null
+            : MeasurementListItems.FirstOrDefault(item => item.Id == selectedMeasurementId.Value);
     }
 
     private static MeasurementOverlayItem ToOverlayItem(MeasurementAnnotation measurement)
@@ -391,12 +465,23 @@ public sealed class MainViewModel : BindableBase
         }
 
         return new MeasurementOverlayItem(
+            measurement.Id,
             points,
             labelAnchor.X + 6,
             labelAnchor.Y + 6,
             measurement.Label,
             measurement.IsPreview ? Brushes.Orange : Brushes.LimeGreen,
             measurement.IsPreview ? 1.5 : 2.0);
+    }
+
+    private void DeleteSelectedMeasurement()
+    {
+        if (SelectedMeasurement is null)
+        {
+            return;
+        }
+
+        ApplySnapshot(_workspaceService.RemoveMeasurement(SelectedMeasurement.Id));
     }
 
     private static BitmapSource? CreateBitmapSource(ViewportImageData? image)
