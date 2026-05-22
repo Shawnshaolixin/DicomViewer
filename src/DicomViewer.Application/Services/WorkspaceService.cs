@@ -130,6 +130,30 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    public WorkspaceSnapshot Rotate(double deltaDegrees)
+    {
+        var nextRotation = (_viewTransform.RotationDegrees + deltaDegrees) % 360.0;
+        if (nextRotation < 0)
+        {
+            nextRotation += 360.0;
+        }
+
+        _viewTransform = _viewTransform with { RotationDegrees = nextRotation };
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot ToggleFlipHorizontal()
+    {
+        _viewTransform = _viewTransform with { FlipHorizontal = !_viewTransform.FlipHorizontal };
+        return BuildSnapshot();
+    }
+
+    public WorkspaceSnapshot ToggleFlipVertical()
+    {
+        _viewTransform = _viewTransform with { FlipVertical = !_viewTransform.FlipVertical };
+        return BuildSnapshot();
+    }
+
     public WorkspaceSnapshot Pan(double deltaX, double deltaY)
     {
         _viewTransform = _viewTransform with
@@ -222,6 +246,21 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    public WorkspaceSnapshot RemoveMeasurement(Guid measurementId)
+    {
+        var series = GetActiveSeries();
+        if (series is not null && _measurementsBySeries.TryGetValue(series.SeriesInstanceUid, out var measurements))
+        {
+            measurements.RemoveAll(item => item.Id == measurementId);
+            if (measurements.Count == 0)
+            {
+                _measurementsBySeries.Remove(series.SeriesInstanceUid);
+            }
+        }
+
+        return BuildSnapshot();
+    }
+
     private WorkspaceSnapshot BuildSnapshot()
     {
         var series = GetActiveSeries();
@@ -285,7 +324,7 @@ public sealed class WorkspaceService
             $"Slice {_activeSliceIndex + 1} / {series.Instances.Count}",
             $"Frame {_activeFrameIndex + 1} / {frameCount}",
             frameCount,
-            $"Zoom {_viewTransform.Zoom:0.00}x | Pan ({_viewTransform.PanX:0},{_viewTransform.PanY:0})",
+            BuildViewText(),
             notesText,
             GetMeasurementsForSnapshot(series.SeriesInstanceUid, image));
     }
@@ -433,6 +472,32 @@ public sealed class WorkspaceService
     private static bool IsMeasurementTool(ViewerToolMode toolMode)
     {
         return toolMode is ViewerToolMode.MeasureLength or ViewerToolMode.MeasureAngle;
+    }
+
+    private string BuildViewText()
+    {
+        var parts = new List<string>
+        {
+            $"Zoom {_viewTransform.Zoom:0.00}x",
+            $"Pan ({_viewTransform.PanX:0},{_viewTransform.PanY:0})",
+        };
+
+        if (Math.Abs(_viewTransform.RotationDegrees) > double.Epsilon)
+        {
+            parts.Add($"Rot {_viewTransform.RotationDegrees:0}°");
+        }
+
+        if (_viewTransform.FlipHorizontal)
+        {
+            parts.Add("Flip H");
+        }
+
+        if (_viewTransform.FlipVertical)
+        {
+            parts.Add("Flip V");
+        }
+
+        return string.Join(" | ", parts);
     }
 
     private static int GetRequiredMeasurementPointCount(ViewerToolMode toolMode)

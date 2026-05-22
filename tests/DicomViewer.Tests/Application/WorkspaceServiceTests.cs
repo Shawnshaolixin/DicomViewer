@@ -40,6 +40,43 @@ public sealed class WorkspaceServiceTests
     }
 
     [Fact]
+    public async Task RemoveMeasurement_WithExistingMeasurement_RemovesOnlySelectedMeasurement()
+    {
+        var service = CreateWorkspaceService();
+
+        _ = await service.LoadAsync();
+        _ = service.SetTool(ViewerToolMode.MeasureLength);
+        _ = service.AddMeasurementPoint(new Point2D(0, 0));
+        var firstSnapshot = service.AddMeasurementPoint(new Point2D(10, 0));
+        _ = service.AddMeasurementPoint(new Point2D(0, 0));
+        var secondSnapshot = service.AddMeasurementPoint(new Point2D(0, 12));
+
+        var snapshot = service.RemoveMeasurement(firstSnapshot.Measurements[0].Id);
+
+        var measurement = Assert.Single(snapshot.Measurements);
+        Assert.Equal(secondSnapshot.Measurements[1].Id, measurement.Id);
+        Assert.Equal("12.0 mm", measurement.Label);
+    }
+
+    [Fact]
+    public async Task RotateAndFlip_UpdatesViewTransformAndViewText()
+    {
+        var service = CreateWorkspaceService();
+
+        _ = await service.LoadAsync();
+        _ = service.Rotate(90);
+        _ = service.ToggleFlipHorizontal();
+        var snapshot = service.ToggleFlipVertical();
+
+        Assert.Equal(90, snapshot.ViewTransform.RotationDegrees);
+        Assert.True(snapshot.ViewTransform.FlipHorizontal);
+        Assert.True(snapshot.ViewTransform.FlipVertical);
+        Assert.Contains("Rot 90°", snapshot.ViewText);
+        Assert.Contains("Flip H", snapshot.ViewText);
+        Assert.Contains("Flip V", snapshot.ViewText);
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenImportFails_ReportsStatus()
     {
         var service = new WorkspaceService(
