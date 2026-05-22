@@ -9,11 +9,14 @@ namespace DicomViewer.Infrastructure.Imaging;
 
 public sealed class DicomViewportImageService : IViewportImageService
 {
-    public ViewportImageData? TryLoad(string filePath, int frameIndex, WindowLevel windowLevel)
+    public ViewportLoadResult TryLoad(string filePath, int frameIndex, WindowLevel windowLevel)
     {
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
         {
-            return null;
+            var message = filePath.StartsWith("Samples/", StringComparison.OrdinalIgnoreCase)
+                ? "当前样例数据仅提供元数据，不包含可渲染的像素文件。"
+                : $"影像文件不存在: {filePath}";
+            return new ViewportLoadResult(null, message);
         }
 
         try
@@ -25,7 +28,7 @@ public sealed class DicomViewportImageService : IViewportImageService
             // 先只支持单样本灰度图，避免在学习阶段过早引入彩色与调色板逻辑。
             if (pixelData.NumberOfFrames == 0 || pixelData.SamplesPerPixel != 1)
             {
-                return null;
+                return new ViewportLoadResult(null, "当前仅支持单样本灰度 DICOM 图像。");
             }
 
             var safeFrameIndex = Math.Clamp(frameIndex, 0, pixelData.NumberOfFrames - 1);
@@ -35,17 +38,21 @@ public sealed class DicomViewportImageService : IViewportImageService
             var slope = dataset.GetSingleValueOrDefault(DicomTag.RescaleSlope, 1.0);
             var intercept = dataset.GetSingleValueOrDefault(DicomTag.RescaleIntercept, 0.0);
 
-            return frame switch
+            var image = frame switch
             {
                 GrayscalePixelDataU8 image8 => BuildImage(image8.Data, image8.Width, image8.Height, windowLevel, invert, slope, intercept),
                 GrayscalePixelDataU16 image16 => BuildImage(image16.Data, image16.Width, image16.Height, windowLevel, invert, slope, intercept),
                 GrayscalePixelDataS16 image16Signed => BuildImage(image16Signed.Data, image16Signed.Width, image16Signed.Height, windowLevel, invert, slope, intercept),
                 _ => null,
             };
+
+            return image is null
+                ? new ViewportLoadResult(null, "当前像素格式暂不支持显示。")
+                : new ViewportLoadResult(image, $"已加载第 {safeFrameIndex + 1} 帧图像。");
         }
         catch
         {
-            return null;
+            return new ViewportLoadResult(null, "影像加载失败，文件可能损坏或像素数据不受支持。");
         }
     }
 

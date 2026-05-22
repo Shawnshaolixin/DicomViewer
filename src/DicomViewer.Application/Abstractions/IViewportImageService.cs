@@ -5,5 +5,5 @@ namespace DicomViewer.Application.Abstractions;
 
 public interface IViewportImageService
 {
-    ViewportImageData? TryLoad(string filePath, int frameIndex, WindowLevel windowLevel);
+    ViewportLoadResult TryLoad(string filePath, int frameIndex, WindowLevel windowLevel);
 }

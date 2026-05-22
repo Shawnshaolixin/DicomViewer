@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using DicomViewer.Application.Models;
 using DicomViewer.Application.Services;
 using DicomViewer.Domain.Enums;
+using DicomViewer.Domain.ValueObjects;
 using Prism.Commands;
 using Prism.Mvvm;
 
@@ -25,20 +27,33 @@ public sealed class MainViewModel : BindableBase
     private string _toolText = ViewerToolMode.None.ToString();
     private string _windowText = "WW 0 / WL 0";
     private string _sliceText = "Slice 0 / 0";
+    private string _frameText = "Frame 0 / 0";
+    private int _frameCount;
     private string _viewText = "Zoom 1.00x | Pan (0,0)";
     private string _notesText = "Viewer shell not loaded yet.";
+    private ViewerToolMode _currentToolMode = ViewerToolMode.None;
+    private double _viewportZoom = 1.0;
+    private double _viewportPanX;
+    private double _viewportPanY;
+    private double _imagePixelWidth;
+    private double _imagePixelHeight;
 
     public MainViewModel(WorkspaceService workspaceService)
     {
         _workspaceService = workspaceService;
         SeriesItems = new ObservableCollection<SeriesSummary>();
+        MeasurementItems = new ObservableCollection<MeasurementOverlayItem>();
 
         ImportFolderCommand = new DelegateCommand(async () => await ImportFolderAsync());
         PreviousSliceCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.MoveSlice(-1))).ObservesCanExecute(() => HasSeriesItems);
         NextSliceCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.MoveSlice(1))).ObservesCanExecute(() => HasSeriesItems);
+        PreviousFrameCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.MoveFrame(-1))).ObservesCanExecute(() => HasMultipleFrames);
+        NextFrameCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.MoveFrame(1))).ObservesCanExecute(() => HasMultipleFrames);
         PanToolCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.Pan)));
         WindowLevelToolCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.WindowLevel)));
-        LengthToolCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.MeasureLength)));
+        LengthToolCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.MeasureLength))).ObservesCanExecute(() => HasSeriesItems);
+        AngleToolCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.SetTool(ViewerToolMode.MeasureAngle))).ObservesCanExecute(() => HasSeriesItems);
+        ClearMeasurementsCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ClearMeasurements())).ObservesCanExecute(() => HasSeriesItems);
         ZoomInCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.Zoom(1.2))).ObservesCanExecute(() => HasSeriesItems);
         ZoomOutCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.Zoom(1.0 / 1.2))).ObservesCanExecute(() => HasSeriesItems);
         SoftTissuePresetCommand = new DelegateCommand(() => ApplySnapshot(_workspaceService.ApplyWindowLevelPreset(new(400, 40)))).ObservesCanExecute(() => HasSeriesItems);
@@ -53,7 +68,11 @@ public sealed class MainViewModel : BindableBase
 
     public ObservableCollection<SeriesSummary> SeriesItems { get; }
 
+    public ObservableCollection<MeasurementOverlayItem> MeasurementItems { get; }
+
     public bool HasSeriesItems => SeriesItems.Count > 0;
+
+    public bool HasMultipleFrames => HasSeriesItems && FrameCount > 1;
 
     public string ImportPath
     {
@@ -146,6 +165,30 @@ public sealed class MainViewModel : BindableBase
         private set => SetProperty(ref _sliceText, value);
     }
 
+    public string FrameText
+    {
+        get => _frameText;
+        private set
+        {
+            if (SetProperty(ref _frameText, value))
+            {
+                RaisePropertyChanged(nameof(HasMultipleFrames));
+            }
+        }
+    }
+
+    public int FrameCount
+    {
+        get => _frameCount;
+        private set
+        {
+            if (SetProperty(ref _frameCount, value))
+            {
+                RaisePropertyChanged(nameof(HasMultipleFrames));
+            }
+        }
+    }
+
     public string ViewText
     {
         get => _viewText;
@@ -158,17 +201,61 @@ public sealed class MainViewModel : BindableBase
         private set => SetProperty(ref _notesText, value);
     }
 
+    public ViewerToolMode CurrentToolMode
+    {
+        get => _currentToolMode;
+        private set => SetProperty(ref _currentToolMode, value);
+    }
+
+    public double ViewportZoom
+    {
+        get => _viewportZoom;
+        private set => SetProperty(ref _viewportZoom, value);
+    }
+
+    public double ViewportPanX
+    {
+        get => _viewportPanX;
+        private set => SetProperty(ref _viewportPanX, value);
+    }
+
+    public double ViewportPanY
+    {
+        get => _viewportPanY;
+        private set => SetProperty(ref _viewportPanY, value);
+    }
+
+    public double ImagePixelWidth
+    {
+        get => _imagePixelWidth;
+        private set => SetProperty(ref _imagePixelWidth, value);
+    }
+
+    public double ImagePixelHeight
+    {
+        get => _imagePixelHeight;
+        private set => SetProperty(ref _imagePixelHeight, value);
+    }
+
     public DelegateCommand PreviousSliceCommand { get; }
 
     public DelegateCommand ImportFolderCommand { get; }
 
     public DelegateCommand NextSliceCommand { get; }
 
+    public DelegateCommand PreviousFrameCommand { get; }
+
+    public DelegateCommand NextFrameCommand { get; }
+
     public DelegateCommand PanToolCommand { get; }
 
     public DelegateCommand WindowLevelToolCommand { get; }
 
     public DelegateCommand LengthToolCommand { get; }
+
+    public DelegateCommand AngleToolCommand { get; }
+
+    public DelegateCommand ClearMeasurementsCommand { get; }
 
     public DelegateCommand ZoomInCommand { get; }
 
@@ -195,6 +282,56 @@ public sealed class MainViewModel : BindableBase
         ApplySnapshot(await _workspaceService.LoadAsync());
     }
 
+    public void ZoomFromWheel(double delta)
+    {
+        if (!HasSeriesItems)
+        {
+            return;
+        }
+
+        ApplySnapshot(_workspaceService.Zoom(delta >= 0 ? 1.1 : 1.0 / 1.1));
+    }
+
+    public void PanViewport(double deltaX, double deltaY)
+    {
+        if (!HasSeriesItems)
+        {
+            return;
+        }
+
+        ApplySnapshot(_workspaceService.Pan(deltaX, deltaY));
+    }
+
+    public void AdjustWindowLevelFromDrag(double deltaX, double deltaY)
+    {
+        if (!HasSeriesItems)
+        {
+            return;
+        }
+
+        ApplySnapshot(_workspaceService.AdjustWindowLevel(deltaX * 2.0, -deltaY * 2.0));
+    }
+
+    public void AddMeasurementPoint(Point imagePoint)
+    {
+        if (!HasSeriesItems)
+        {
+            return;
+        }
+
+        ApplySnapshot(_workspaceService.AddMeasurementPoint(new Point2D(imagePoint.X, imagePoint.Y)));
+    }
+
+    public void UpdateMeasurementPreview(Point imagePoint)
+    {
+        if (!HasSeriesItems)
+        {
+            return;
+        }
+
+        ApplySnapshot(_workspaceService.UpdateMeasurementPreview(new Point2D(imagePoint.X, imagePoint.Y)));
+    }
+
     private async Task ImportFolderAsync()
     {
         ApplySnapshot(await _workspaceService.LoadAsync(ImportPath));
@@ -212,19 +349,54 @@ public sealed class MainViewModel : BindableBase
         SelectedSeries = SeriesItems.FirstOrDefault(item => item.SeriesInstanceUid == snapshot.ActiveSeriesInstanceUid);
         _isApplyingSnapshot = false;
         RaisePropertyChanged(nameof(HasSeriesItems));
+        RaisePropertyChanged(nameof(HasMultipleFrames));
 
         ViewerTitle = snapshot.ViewerTitle;
         ViewerSubtitle = snapshot.ViewerSubtitle;
         PlaceholderText = snapshot.PlaceholderText;
         ViewportImageSource = CreateBitmapSource(snapshot.ViewportImage);
+        ImagePixelWidth = snapshot.ViewportImage?.Width ?? 0;
+        ImagePixelHeight = snapshot.ViewportImage?.Height ?? 0;
+        CurrentToolMode = snapshot.ToolMode;
+        ViewportZoom = snapshot.ViewTransform.Zoom;
+        ViewportPanX = snapshot.ViewTransform.PanX;
+        ViewportPanY = snapshot.ViewTransform.PanY;
         StatusText = snapshot.StatusText;
         PatientText = snapshot.PatientText;
         StudyText = snapshot.StudyText;
         ToolText = snapshot.ToolText;
         WindowText = snapshot.WindowText;
         SliceText = snapshot.SliceText;
+        FrameText = snapshot.FrameText;
+        FrameCount = snapshot.FrameCount;
         ViewText = snapshot.ViewText;
         NotesText = snapshot.NotesText;
+
+        MeasurementItems.Clear();
+        foreach (var measurement in snapshot.Measurements)
+        {
+            MeasurementItems.Add(ToOverlayItem(measurement));
+        }
+    }
+
+    private static MeasurementOverlayItem ToOverlayItem(MeasurementAnnotation measurement)
+    {
+        var points = new PointCollection(measurement.Points.Select(point => new Point(point.X, point.Y)));
+        var labelAnchor = measurement.Points.Count >= 3 ? measurement.Points[1] : measurement.Points.FirstOrDefault() ?? new Point2D(0, 0);
+        if (measurement.Points.Count == 2)
+        {
+            labelAnchor = new Point2D(
+                (measurement.Points[0].X + measurement.Points[1].X) / 2.0,
+                (measurement.Points[0].Y + measurement.Points[1].Y) / 2.0);
+        }
+
+        return new MeasurementOverlayItem(
+            points,
+            labelAnchor.X + 6,
+            labelAnchor.Y + 6,
+            measurement.Label,
+            measurement.IsPreview ? Brushes.Orange : Brushes.LimeGreen,
+            measurement.IsPreview ? 1.5 : 2.0);
     }
 
     private static BitmapSource? CreateBitmapSource(ViewportImageData? image)
@@ -239,7 +411,7 @@ public sealed class MainViewModel : BindableBase
             image.Height,
             96,
             96,
-            System.Windows.Media.PixelFormats.Gray8,
+            PixelFormats.Gray8,
             null,
             image.Pixels,
             image.Stride);

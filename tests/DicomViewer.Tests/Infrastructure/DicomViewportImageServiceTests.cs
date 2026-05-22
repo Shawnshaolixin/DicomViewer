@@ -20,10 +20,11 @@ public sealed class DicomViewportImageServiceTests
 
             var image = service.TryLoad(tempFilePath, 0, new WindowLevel(255, 127.5));
 
-            Assert.NotNull(image);
-            Assert.Equal(2, image!.Width);
-            Assert.Equal(2, image.Height);
-            Assert.Equal(4, image.Pixels.Length);
+            Assert.True(image.Succeeded);
+            Assert.NotNull(image.Image);
+            Assert.Equal(2, image.Image!.Width);
+            Assert.Equal(2, image.Image.Height);
+            Assert.Equal(4, image.Image.Pixels.Length);
         }
         finally
         {
@@ -47,9 +48,9 @@ public sealed class DicomViewportImageServiceTests
             var narrowWindow = service.TryLoad(tempFilePath, 0, new WindowLevel(64, 32));
             var wideWindow = service.TryLoad(tempFilePath, 0, new WindowLevel(255, 127.5));
 
-            Assert.NotNull(narrowWindow);
-            Assert.NotNull(wideWindow);
-            Assert.NotEqual(narrowWindow!.Pixels[1], wideWindow!.Pixels[1]);
+            Assert.True(narrowWindow.Succeeded);
+            Assert.True(wideWindow.Succeeded);
+            Assert.NotEqual(narrowWindow.Image!.Pixels[1], wideWindow.Image!.Pixels[1]);
         }
         finally
         {
@@ -60,7 +61,37 @@ public sealed class DicomViewportImageServiceTests
         }
     }
 
-    private static void CreateTestDicom(string filePath)
+    [Fact]
+    public void TryLoad_WithMultiFrameDicom_CanLoadRequestedFrame()
+    {
+        var service = new DicomViewportImageService();
+        var tempFilePath = Path.Combine(Path.GetTempPath(), $"dicomviewer-{Guid.NewGuid():N}.dcm");
+
+        try
+        {
+            CreateTestDicom(tempFilePath, framePixels: new[]
+            {
+                new byte[] { 0, 10, 20, 30 },
+                new byte[] { 200, 210, 220, 230 },
+            });
+
+            var firstFrame = service.TryLoad(tempFilePath, 0, new WindowLevel(255, 127.5));
+            var secondFrame = service.TryLoad(tempFilePath, 1, new WindowLevel(255, 127.5));
+
+            Assert.True(firstFrame.Succeeded);
+            Assert.True(secondFrame.Succeeded);
+            Assert.NotEqual(firstFrame.Image!.Pixels[0], secondFrame.Image!.Pixels[0]);
+        }
+        finally
+        {
+            if (File.Exists(tempFilePath))
+            {
+                File.Delete(tempFilePath);
+            }
+        }
+    }
+
+    private static void CreateTestDicom(string filePath, IReadOnlyList<byte[]>? framePixels = null)
     {
         var dataset = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
         {
@@ -85,7 +116,13 @@ public sealed class DicomViewportImageServiceTests
             { DicomTag.WindowCenter, 127.5 },
         };
 
-        DicomPixelData.Create(dataset, true).AddFrame(new MemoryByteBuffer(new byte[] { 0, 85, 170, 255 }));
+        var pixelData = DicomPixelData.Create(dataset, true);
+        var frames = framePixels ?? new[] { new byte[] { 0, 85, 170, 255 } };
+        dataset.AddOrUpdate(DicomTag.NumberOfFrames, frames.Count);
+        foreach (var frame in frames)
+        {
+            pixelData.AddFrame(new MemoryByteBuffer(frame));
+        }
 
         new DicomFile(dataset).Save(filePath);
     }

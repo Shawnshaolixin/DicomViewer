@@ -1,4 +1,5 @@
 using DicomViewer.Application.Abstractions;
+using DicomViewer.Application.Models;
 using DicomViewer.Domain.Entities;
 using DicomViewer.Domain.Enums;
 using DicomViewer.Domain.ValueObjects;
@@ -8,30 +9,66 @@ namespace DicomViewer.Infrastructure.Data;
 
 public sealed class FileSystemStudyCatalogService : IStudyCatalogService
 {
-    public async Task<IReadOnlyList<Patient>> LoadAsync(string? sourcePath = null, CancellationToken cancellationToken = default)
+    public async Task<StudyCatalogLoadResult> LoadAsync(string? sourcePath = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sourcePath))
         {
-            return BuildSamplePatients();
+            return new StudyCatalogLoadResult(
+                BuildSamplePatients(),
+                "Sample workspace loaded",
+                "当前显示内置样例数据。",
+                0,
+                0,
+                0,
+                true);
         }
 
         if (!Directory.Exists(sourcePath))
         {
-            return Array.Empty<Patient>();
+            return new StudyCatalogLoadResult(
+                Array.Empty<Patient>(),
+                "Import failed",
+                $"目录不存在: {sourcePath}",
+                0,
+                0,
+                0,
+                false);
         }
 
         var records = new List<DicomRecord>();
+        var scannedFileCount = 0;
+        var skippedFileCount = 0;
         foreach (var filePath in Directory.EnumerateFiles(sourcePath, "*", SearchOption.AllDirectories))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            scannedFileCount++;
             var record = await TryReadRecordAsync(filePath, cancellationToken);
             if (record is not null)
             {
                 records.Add(record);
             }
+            else
+            {
+                skippedFileCount++;
+            }
         }
 
-        return records.Count == 0 ? Array.Empty<Patient>() : BuildPatients(records);
+        var patients = records.Count == 0 ? Array.Empty<Patient>() : BuildPatients(records);
+        var statusText = records.Count == 0 ? "No DICOM series found" : "DICOM metadata imported";
+        var noteText = records.Count == 0
+            ? $"目录中未找到可解析的 DICOM 文件: {sourcePath}"
+            : skippedFileCount > 0
+                ? $"已从目录加载 {records.Count} 个实例，跳过 {skippedFileCount} 个无法解析的文件: {sourcePath}"
+                : $"已从目录加载 {records.Count} 个实例: {sourcePath}";
+
+        return new StudyCatalogLoadResult(
+            patients,
+            statusText,
+            noteText,
+            scannedFileCount,
+            records.Count,
+            skippedFileCount,
+            false);
     }
 
     private static async Task<DicomRecord?> TryReadRecordAsync(string filePath, CancellationToken cancellationToken)

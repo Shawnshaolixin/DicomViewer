@@ -55,10 +55,14 @@
                         <Button Content="平移" Command="{Binding PanToolCommand}" />
                         <Button Content="窗宽窗位" Command="{Binding WindowLevelToolCommand}" />
                         <Button Content="长度测量" Command="{Binding LengthToolCommand}" />
+                        <Button Content="角度测量" Command="{Binding AngleToolCommand}" />
+                        <Button Content="清空标注" Command="{Binding ClearMeasurementsCommand}" />
                         <Button Content="放大" Command="{Binding ZoomInCommand}" />
                         <Button Content="缩小" Command="{Binding ZoomOutCommand}" />
                         <Button Content="上一张" Command="{Binding PreviousSliceCommand}" />
                         <Button Content="下一张" Command="{Binding NextSliceCommand}" />
+                        <Button Content="上一帧" Command="{Binding PreviousFrameCommand}" />
+                        <Button Content="下一帧" Command="{Binding NextFrameCommand}" />
                         <Button Content="重置视图" Command="{Binding ResetViewCommand}" Margin="16,0,0,0" />
                     </StackPanel>
 
@@ -77,7 +81,7 @@
 
                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                     <TextBlock Text="WPF 医学影像查看器" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="已接入目录导入入口，可解析真实 DICOM 元数据并刷新序列列表" Foreground="#A9BAC6" />
+                    <TextBlock Text="支持拖拽平移、滚轮缩放、拖拽调窗、多帧浏览和基础测量标注" Foreground="#A9BAC6" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -89,6 +93,10 @@
             <Separator />
             <StatusBarItem>
                 <TextBlock Text="{Binding SliceText}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock Text="{Binding FrameText}" />
             </StatusBarItem>
             <Separator />
             <StatusBarItem>
@@ -140,13 +148,60 @@
                     </StackPanel>
 
                     <Border Grid.Row="1" Margin="0,18,0,18" CornerRadius="18" Background="#05080C" BorderBrush="#243341" BorderThickness="1.2">
-                        <Grid>
-                            <Image Source="{Binding ViewportImageSource}"
-                                   Visibility="{Binding ViewportImageVisibility}"
-                                   Stretch="Uniform"
-                                   Margin="18"
-                                   SnapsToDevicePixels="True"
-                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                        <Grid x:Name="ViewportSurface"
+                              ClipToBounds="True"
+                              MouseLeftButtonDown="ViewportSurface_OnMouseLeftButtonDown"
+                              MouseLeftButtonUp="ViewportSurface_OnMouseLeftButtonUp"
+                              MouseMove="ViewportSurface_OnMouseMove"
+                              MouseWheel="ViewportSurface_OnMouseWheel">
+                            <Viewbox Stretch="Uniform" Visibility="{Binding ViewportImageVisibility}">
+                                <Canvas x:Name="ViewportImageCanvas"
+                                        Width="{Binding ImagePixelWidth}"
+                                        Height="{Binding ImagePixelHeight}"
+                                        SnapsToDevicePixels="True">
+                                    <Canvas.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform ScaleX="{Binding ViewportZoom}" ScaleY="{Binding ViewportZoom}" />
+                                            <TranslateTransform X="{Binding ViewportPanX}" Y="{Binding ViewportPanY}" />
+                                        </TransformGroup>
+                                    </Canvas.RenderTransform>
+
+                                    <Image Width="{Binding ImagePixelWidth}"
+                                           Height="{Binding ImagePixelHeight}"
+                                           Source="{Binding ViewportImageSource}"
+                                           Stretch="Fill"
+                                           RenderOptions.BitmapScalingMode="HighQuality" />
+
+                                    <ItemsControl ItemsSource="{Binding MeasurementItems}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Canvas>
+                                                    <Polyline Points="{Binding Points}"
+                                                              Stroke="{Binding Stroke}"
+                                                              StrokeThickness="{Binding StrokeThickness}"
+                                                              StrokeLineJoin="Round"
+                                                              StrokeStartLineCap="Round"
+                                                              StrokeEndLineCap="Round" />
+                                                    <Border Canvas.Left="{Binding LabelX}"
+                                                            Canvas.Top="{Binding LabelY}"
+                                                            Background="#AA0F1720"
+                                                            BorderBrush="{Binding Stroke}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="6"
+                                                            Padding="6,3">
+                                                        <TextBlock Text="{Binding Label}" Foreground="#F8FBFD" />
+                                                    </Border>
+                                                </Canvas>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Canvas>
+                            </Viewbox>
 
                             <Canvas Visibility="{Binding PlaceholderVisibility}">
                                 <Line X1="0" Y1="180" X2="9999" Y2="180" Stroke="#1D2B36" StrokeThickness="1" />
@@ -162,7 +217,10 @@
                                 <TextBlock Text="{Binding WindowText}" />
                             </Border>
                             <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16" Padding="10,6" Background="#8216202A" CornerRadius="8">
-                                <TextBlock Text="{Binding SliceText}" />
+                                <StackPanel>
+                                    <TextBlock Text="{Binding SliceText}" />
+                                    <TextBlock Text="{Binding FrameText}" Foreground="#C4D2DB" FontSize="12" />
+                                </StackPanel>
                             </Border>
                             <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16" Padding="10,6" Background="#8216202A" CornerRadius="8">
                                 <TextBlock Text="{Binding ToolText}" />
@@ -174,7 +232,7 @@
                     </Border>
 
                     <TextBlock Grid.Row="2"
-                               Text="后续可在此视口接入真实像素渲染、自定义交互控件和标注叠加层。"
+                               Text="交互说明：滚轮缩放；平移模式下拖拽移动；窗宽窗位模式下拖拽调窗；测量模式下单击落点。"
                                Foreground="#93A6B2" />
                 </Grid>
             </Border>
@@ -192,7 +250,9 @@
                                 <TextBlock Text="视图模式" Foreground="#9FB0BC" />
                                 <TextBlock Text="{Binding ToolText}" Margin="0,4,0,12" FontSize="16" />
                                 <TextBlock Text="视口状态" Foreground="#9FB0BC" />
-                                <TextBlock Text="{Binding ViewText}" Margin="0,4,0,0" FontSize="16" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ViewText}" Margin="0,4,0,12" FontSize="16" TextWrapping="Wrap" />
+                                <TextBlock Text="当前帧" Foreground="#9FB0BC" />
+                                <TextBlock Text="{Binding FrameText}" Margin="0,4,0,0" FontSize="16" />
                             </StackPanel>
                         </Border>
 
@@ -203,7 +263,7 @@
 
                         <TextBlock Text="导入提示" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />
                         <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
-                            <TextBlock Text="在顶部输入包含 DICOM 文件的目录路径后点击“导入目录”。未输入路径时会显示内置样例数据。" TextWrapping="Wrap" Foreground="#C4D2DB" />
+                            <TextBlock Text="支持输入包含 DICOM 文件的目录路径后点击“导入目录”。未输入路径时会显示内置样例数据；解析失败或不支持的文件会在说明区反馈。" TextWrapping="Wrap" Foreground="#C4D2DB" />
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
