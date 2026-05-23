@@ -2,6 +2,10 @@
 using DicomViewer.Application.Services;
 using DicomViewer.Infrastructure.Data;
 using DicomViewer.Infrastructure.Imaging;
+using DicomViewer.Infrastructure.Persistence;
+using DicomViewer.Infrastructure.Services;
+using DicomViewer.Infrastructure.Simulation;
+using DicomViewer.Infrastructure.Worklist;
 using DicomViewer.Rendering.Abstractions;
 using DicomViewer.Rendering.Services;
 using DicomViewer.Wpf.ViewModels;
@@ -21,9 +25,14 @@ public partial class App : PrismApplication
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
         containerRegistry.RegisterSingleton<IStudyCatalogService, FileSystemStudyCatalogService>();
+        containerRegistry.RegisterSingleton<IWorklistService, MockWorklistService>();
+        containerRegistry.RegisterSingleton<IInterlockService, DefaultInterlockService>();
+        containerRegistry.RegisterSingleton<IExposureSimulationService, MockExposureSimulationService>();
+        containerRegistry.RegisterSingleton<IAuditService, InMemoryAuditService>();
         containerRegistry.RegisterSingleton<IImageRenderService, PlaceholderRenderService>();
         containerRegistry.RegisterSingleton<IViewportImageService, DicomViewportImageService>();
         containerRegistry.RegisterSingleton<WorkspaceService>();
+        containerRegistry.RegisterSingleton<ExamWorkflowService>();
         containerRegistry.RegisterSingleton<MainViewModel>();
         containerRegistry.RegisterSingleton<MainWindow>();
     }

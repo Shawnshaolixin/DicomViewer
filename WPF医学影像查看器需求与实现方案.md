@@ -131,3 +131,5 @@ dotnet run --project src/DicomViewer.Wpf/DicomViewer.Wpf.csproj
 1. 根目录新增本文件作为正式文档。
 2. 当前目录已生成可运行的 WPF 医学影像查看器工程骨架。
 3. 代码结构已与文档中的分层设计保持一致。
+
+后续如果继续沿“曝光控制台模拟器 + 采集流程模拟 + PACS 集成 + 阅片回看”方向扩展，请参考 docs/曝光控制台模拟器需求与开发规划.md。
