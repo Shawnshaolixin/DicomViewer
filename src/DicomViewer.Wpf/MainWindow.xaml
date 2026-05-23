@@ -3,48 +3,33 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:models="clr-namespace:DicomViewer.Application.Models;assembly=DicomViewer.Application"
+        xmlns:nav="clr-namespace:DicomViewer.Wpf.Navigation"
         xmlns:prism="http://prismlibrary.com/"
         mc:Ignorable="d"
         prism:ViewModelLocator.AutoWireViewModel="True"
         Title="DicomViewer"
-        Width="1440"
-        Height="900"
-        MinWidth="1100"
-        MinHeight="700"
+        Width="1480"
+        Height="940"
+        MinWidth="1200"
+        MinHeight="760"
         WindowStartupLocation="CenterScreen"
-        Background="#11161C">
+        Background="#0F141A">
     <Window.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#EAF1F5" />
         </Style>
         <Style TargetType="Button">
-            <Setter Property="Margin" Value="0,0,8,0" />
-            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="Padding" Value="16,10" />
             <Setter Property="Background" Value="#243341" />
             <Setter Property="Foreground" Value="#F5FAFD" />
             <Setter Property="BorderBrush" Value="#334758" />
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Foreground" Value="#F5FAFD" />
-            <Setter Property="Background" Value="#10171E" />
-            <Setter Property="BorderBrush" Value="#334758" />
-            <Setter Property="Padding" Value="10,8" />
-            <Setter Property="MinWidth" Value="320" />
-        </Style>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#EAF1F5" />
-            <Setter Property="Margin" Value="0,4,12,0" />
-        </Style>
-        <Style TargetType="ListBoxItem">
-            <Setter Property="Padding" Value="8" />
-            <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
     </Window.Resources>
 
     <DockPanel LastChildFill="True">
         <Border DockPanel.Dock="Top"
-                Padding="16"
+                Padding="18"
                 Background="#16202A"
                 BorderBrush="#263746"
                 BorderThickness="0,0,0,1">
@@ -55,344 +40,25 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="平移" Command="{Binding PanToolCommand}" />
-                        <Button Content="窗宽窗位" Command="{Binding WindowLevelToolCommand}" />
-                        <Button Content="长度测量" Command="{Binding LengthToolCommand}" />
-                        <Button Content="角度测量" Command="{Binding AngleToolCommand}" />
-                        <Button Content="清空标注" Command="{Binding ClearMeasurementsCommand}" />
-                        <Button Content="删除选中标注" Command="{Binding DeleteSelectedMeasurementCommand}" />
-                        <Button Content="放大" Command="{Binding ZoomInCommand}" />
-                        <Button Content="缩小" Command="{Binding ZoomOutCommand}" />
-                        <Button Content="左旋90°" Command="{Binding RotateLeftCommand}" />
-                        <Button Content="右旋90°" Command="{Binding RotateRightCommand}" />
-                        <Button Content="水平翻转" Command="{Binding FlipHorizontalCommand}" />
-                        <Button Content="垂直翻转" Command="{Binding FlipVerticalCommand}" />
-                        <Button Content="上一张" Command="{Binding PreviousSliceCommand}" />
-                        <Button Content="下一张" Command="{Binding NextSliceCommand}" />
-                        <Button Content="上一帧" Command="{Binding PreviousFrameCommand}" />
-                        <Button Content="下一帧" Command="{Binding NextFrameCommand}" />
-                        <Button Content="重置视图" Command="{Binding ResetViewCommand}" Margin="16,0,0,0" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <TextBox Text="{Binding ImportPath, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Content="导入目录" Command="{Binding ImportFolderCommand}" Margin="12,0,0,0" />
-                        <Button Content="软组织窗" Command="{Binding SoftTissuePresetCommand}" Margin="20,0,0,0" />
-                        <Button Content="肺窗" Command="{Binding LungPresetCommand}" />
-                        <Button Content="骨窗" Command="{Binding BonePresetCommand}" />
-                        <Button Content="WW+" Command="{Binding IncreaseWindowCommand}" Margin="20,0,0,0" />
-                        <Button Content="WW-" Command="{Binding DecreaseWindowCommand}" />
-                        <Button Content="WL+" Command="{Binding IncreaseLevelCommand}" />
-                        <Button Content="WL-" Command="{Binding DecreaseLevelCommand}" />
+                    <TextBlock Text="DicomViewer Shell" FontSize="24" FontWeight="Bold" />
+                    <TextBlock Text="当前主窗口只负责模块导航与页面承载，查看器与曝光控制台已独立。" Foreground="#9FB0BC" Margin="0,6,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button Content="影像查看器" Command="{Binding NavigateViewerCommand}" />
+                        <Button Content="曝光控制台" Command="{Binding NavigateExposureConsoleCommand}" />
                     </StackPanel>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                    <TextBlock Text="WPF 医学影像查看器" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="支持旋转翻转、拖拽平移、滚轮缩放、拖拽调窗、多帧浏览和基础测量标注" Foreground="#A9BAC6" />
-                </StackPanel>
+                <Border Grid.Column="1" Padding="18,12" Background="#10171E" CornerRadius="12">
+                    <StackPanel Width="320">
+                        <TextBlock Text="{Binding CurrentPageTitle}" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding CurrentPageDescription}" Foreground="#9FB0BC" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
-        <StatusBar DockPanel.Dock="Bottom" Background="#16202A" Foreground="#EAF1F5">
-            <StatusBarItem>
-                <TextBlock Text="{Binding StatusText}" />
-            </StatusBarItem>
-            <Separator />
-            <StatusBarItem>
-                <TextBlock Text="{Binding SliceText}" />
-            </StatusBarItem>
-            <Separator />
-            <StatusBarItem>
-                <TextBlock Text="{Binding FrameText}" />
-            </StatusBarItem>
-            <Separator />
-            <StatusBarItem>
-                <TextBlock Text="{Binding WindowText}" />
-            </StatusBarItem>
-        </StatusBar>
-
-        <Grid Margin="16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="320" />
-            </Grid.ColumnDefinitions>
-
-            <Border Grid.Column="0" Background="#16202A" CornerRadius="12" Padding="16">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="序列列表" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
-                    <ListBox ItemsSource="{Binding SeriesItems}"
-                             SelectedItem="{Binding SelectedSeries}"
-                             Background="#10171E"
-                             BorderThickness="0"
-                             Foreground="#EAF1F5"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="{x:Type models:SeriesSummary}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding ImageCount, StringFormat=切片数: {0}}" Foreground="#A9BAC6" Margin="0,4,0,0" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
-            </Border>
-
-            <Border Grid.Column="2" Background="#0D1117" CornerRadius="16" Padding="20">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <StackPanel>
-                        <TextBlock Text="{Binding ViewerTitle}" FontSize="26" FontWeight="Bold" />
-                        <TextBlock Text="{Binding ViewerSubtitle}" Foreground="#9FB0BC" Margin="0,6,0,0" />
-                    </StackPanel>
-
-                    <Border Grid.Row="1" Margin="0,18,0,18" CornerRadius="18" Background="#05080C" BorderBrush="#243341" BorderThickness="1.2">
-                        <Grid x:Name="ViewportSurface"
-                              ClipToBounds="True"
-                              MouseLeftButtonDown="ViewportSurface_OnMouseLeftButtonDown"
-                              MouseLeftButtonUp="ViewportSurface_OnMouseLeftButtonUp"
-                              MouseMove="ViewportSurface_OnMouseMove"
-                              MouseWheel="ViewportSurface_OnMouseWheel">
-                            <Viewbox Stretch="Uniform" Visibility="{Binding ViewportImageVisibility}">
-                                <Canvas x:Name="ViewportImageCanvas"
-                                        Width="{Binding ImagePixelWidth}"
-                                        Height="{Binding ImagePixelHeight}"
-                                        SnapsToDevicePixels="True">
-                                    <Canvas.RenderTransform>
-                                        <TransformGroup>
-                                            <ScaleTransform ScaleX="{Binding ViewportFlipScaleX}"
-                                                            ScaleY="{Binding ViewportFlipScaleY}"
-                                                            CenterX="{Binding ImageCenterX}"
-                                                            CenterY="{Binding ImageCenterY}" />
-                                            <RotateTransform Angle="{Binding ViewportRotation}"
-                                                             CenterX="{Binding ImageCenterX}"
-                                                             CenterY="{Binding ImageCenterY}" />
-                                            <ScaleTransform ScaleX="{Binding ViewportZoom}" ScaleY="{Binding ViewportZoom}" />
-                                            <TranslateTransform X="{Binding ViewportPanX}" Y="{Binding ViewportPanY}" />
-                                        </TransformGroup>
-                                    </Canvas.RenderTransform>
-
-                                    <Image Width="{Binding ImagePixelWidth}"
-                                           Height="{Binding ImagePixelHeight}"
-                                           Source="{Binding ViewportImageSource}"
-                                           Stretch="Fill"
-                                           RenderOptions.BitmapScalingMode="HighQuality" />
-
-                                    <ItemsControl ItemsSource="{Binding MeasurementItems}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <Canvas />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Canvas>
-                                                    <Polyline Points="{Binding Points}"
-                                                              Stroke="{Binding Stroke}"
-                                                              StrokeThickness="{Binding StrokeThickness}"
-                                                              StrokeLineJoin="Round"
-                                                              StrokeStartLineCap="Round"
-                                                              StrokeEndLineCap="Round" />
-                                                    <Border Canvas.Left="{Binding LabelX}"
-                                                            Canvas.Top="{Binding LabelY}"
-                                                            Background="#AA0F1720"
-                                                            BorderBrush="{Binding Stroke}"
-                                                            BorderThickness="1"
-                                                            CornerRadius="6"
-                                                            Padding="6,3">
-                                                        <TextBlock Text="{Binding Label}" Foreground="#F8FBFD" />
-                                                    </Border>
-                                                </Canvas>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </Canvas>
-                            </Viewbox>
-
-                            <Canvas Visibility="{Binding PlaceholderVisibility}">
-                                <Line X1="0" Y1="180" X2="9999" Y2="180" Stroke="#1D2B36" StrokeThickness="1" />
-                                <Line X1="320" Y1="0" X2="320" Y2="9999" Stroke="#1D2B36" StrokeThickness="1" />
-                            </Canvas>
-
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding PlaceholderVisibility}">
-                                <TextBlock Text="影像视口占位区" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center" />
-                                <TextBlock Text="{Binding PlaceholderText}" Margin="0,18,0,0" HorizontalAlignment="Center" TextAlignment="Center" Foreground="#C4D2DB" />
-                            </StackPanel>
-
-                            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Padding="10,6" Background="#8216202A" CornerRadius="8">
-                                <TextBlock Text="{Binding WindowText}" />
-                            </Border>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16" Padding="10,6" Background="#8216202A" CornerRadius="8">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding SliceText}" />
-                                    <TextBlock Text="{Binding FrameText}" Foreground="#C4D2DB" FontSize="12" />
-                                </StackPanel>
-                            </Border>
-                            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16" Padding="10,6" Background="#8216202A" CornerRadius="8">
-                                <TextBlock Text="{Binding ToolText}" />
-                            </Border>
-                            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" Padding="10,6" Background="#8216202A" CornerRadius="8">
-                                <TextBlock Text="{Binding ViewText}" />
-                            </Border>
-                        </Grid>
-                    </Border>
-
-                    <TextBlock Grid.Row="2"
-                               Text="交互说明：滚轮缩放；平移模式下拖拽移动；窗宽窗位模式下拖拽调窗；测量模式下单击落点；已完成标注可在右侧列表删除。"
-                               Foreground="#93A6B2" />
-                </Grid>
-            </Border>
-
-            <Border Grid.Column="4" Background="#16202A" CornerRadius="12" Padding="16">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel>
-                        <TextBlock Text="曝光控制台" FontSize="18" FontWeight="SemiBold" />
-                        <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button Content="加载工作列表" Command="{Binding LoadWorklistCommand}" />
-                                    <Button Content="联锁检查" Command="{Binding RunInterlockCheckCommand}" />
-                                    <Button Content="执行曝光" Command="{Binding ExecuteExposureCommand}" />
-                                </StackPanel>
-                                <TextBlock Text="控制台状态" Foreground="#9FB0BC" Margin="0,12,0,0" />
-                                <TextBlock Text="{Binding ConsoleStatusText}" Margin="0,4,0,8" FontSize="16" />
-                                <TextBlock Text="当前患者" Foreground="#9FB0BC" />
-                                <TextBlock Text="{Binding ConsolePatientText}" Margin="0,4,0,8" FontSize="16" TextWrapping="Wrap" />
-                                <TextBlock Text="当前检查" Foreground="#9FB0BC" />
-                                <TextBlock Text="{Binding ConsoleOrderText}" Margin="0,4,0,8" FontSize="16" TextWrapping="Wrap" />
-                                <TextBlock Text="设备状态 / 流程状态" Foreground="#9FB0BC" />
-                                <TextBlock Text="{Binding DeviceWorkflowText}" Margin="0,4,0,0" FontSize="16" />
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock Text="工作列表" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />
-                        <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
-                            <ListBox ItemsSource="{Binding WorklistItems}"
-                                     SelectedItem="{Binding SelectedWorklistItem}"
-                                     Background="#10171E"
-                                     BorderThickness="0"
-                                     Foreground="#EAF1F5"
-                                     MinHeight="120">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type models:WorklistItem}">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding PatientName}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding ProcedureDescription}" Foreground="#C4D2DB" Margin="0,2,0,0" />
-                                            <TextBlock Foreground="#9FB0BC" Margin="0,2,0,0">
-                                                <Run Text="{Binding BodyPart}" />
-                                                <Run Text=" / " />
-                                                <Run Text="{Binding Projection}" />
-                                                <Run Text=" / " />
-                                                <Run Text="{Binding Status}" />
-                                            </TextBlock>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </Border>
-
-                        <TextBlock Text="曝光参数" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />
-                        <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
-                            <StackPanel>
-                                <UniformGrid Columns="2" Margin="0,0,0,8">
-                                    <StackPanel Margin="0,0,8,0">
-                                        <TextBlock Text="kV" Foreground="#9FB0BC" />
-                                        <TextBox Text="{Binding KilovoltagePeakText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="mA" Foreground="#9FB0BC" />
-                                        <TextBox Text="{Binding TubeCurrentMilliampereText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
-                                    </StackPanel>
-                                </UniformGrid>
-                                <UniformGrid Columns="2" Margin="0,0,0,8">
-                                    <StackPanel Margin="0,0,8,0">
-                                        <TextBlock Text="ms" Foreground="#9FB0BC" />
-                                        <TextBox Text="{Binding ExposureTimeMillisecondsText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="mAs" Foreground="#9FB0BC" />
-                                        <TextBox Text="{Binding MilliampereSecondsText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
-                                    </StackPanel>
-                                </UniformGrid>
-                                <TextBlock Text="SID(mm)" Foreground="#9FB0BC" />
-                                <TextBox Text="{Binding SourceToImageDistanceText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
-                                <TextBlock Text="BodyPart" Foreground="#9FB0BC" Margin="0,8,0,0" />
-                                <TextBox Text="{Binding BodyPartText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
-                                <TextBlock Text="Projection" Foreground="#9FB0BC" Margin="0,8,0,0" />
-                                <TextBox Text="{Binding ProjectionText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
-                                <CheckBox Content="AEC 开启" IsChecked="{Binding IsAutomaticExposureControlEnabled}" Margin="0,10,0,0" />
-                                <Button Content="应用参数" Command="{Binding ApplyExposureParametersCommand}" Margin="0,12,0,0" />
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock Text="联锁状态" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />
-                        <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
-                            <StackPanel>
-                                <WrapPanel>
-                                    <CheckBox Content="探测器已连接" IsChecked="{Binding DetectorConnected}" />
-                                    <CheckBox Content="球管已预热" IsChecked="{Binding TubeWarmedUp}" />
-                                    <CheckBox Content="防护门已关闭" IsChecked="{Binding DoorClosed}" />
-                                    <CheckBox Content="PACS 可用" IsChecked="{Binding PacsAvailable}" />
-                                </WrapPanel>
-                                <ItemsControl ItemsSource="{Binding InterlockMessages}" Margin="0,8,0,0">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" Foreground="#F6C177" TextWrapping="Wrap" Margin="0,0,0,4" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <TextBlock Text="联锁通过，可执行曝光。" Foreground="#7FD38C" Margin="0,6,0,0">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding HasInterlockFailures}" Value="False">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock Text="模拟结果与审计" FontSize="18" FontWeight="SemiBold" Margin="0,20,0,0" />
-                        <Border Margin="0,12,0,0" Padding="12" CornerRadius="10" Background="#10171E">
-                            <StackPanel>
-                                <TextBlock Text="结果预览" Foreground="#9FB0BC" />
-                                <TextBlock Text="{Binding LastExposureSummaryText}" TextWrapping="Wrap" Margin="0,4,0,10" />
-                                <TextBlock Text="输出路径" Foreground="#9FB0BC" />
-                                <TextBlock Text="{Binding LastArtifactPathText}" TextWrapping="Wrap" Margin="0,4,0,10" Foreground="#C4D2DB" />
-                                <TextBlock Text="控制台说明" Foreground="#9FB0BC" />
-                                <TextBlock Text="{Binding ConsoleNotesText}" TextWrapping="Wrap" Margin="0,4,0,10" Foreground="#C4D2DB" />
-                                <TextBlock Text="审计日志" Foreground="#9FB0BC" />
-                                <ListBox ItemsSource="{Binding AuditEntries}"
-                                         Background="#10171E"
-                                         BorderThickness="0"
-                                         Foreground="#EAF1F5"
-                                         MinHeight="120"
-                                         MaxHeight="180">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" />
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </Border>
-        </Grid>
+        <Border Margin="16" Background="#0B1015" CornerRadius="18" BorderBrush="#243341" BorderThickness="1.2">
+            <ContentControl prism:RegionManager.RegionName="{x:Static nav:RegionNames.MainContentRegion}" />
+        </Border>
     </DockPanel>
 </Window>

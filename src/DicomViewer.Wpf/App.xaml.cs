@@ -9,6 +9,8 @@ using DicomViewer.Infrastructure.Simulation;
 using DicomViewer.Infrastructure.Worklist;
 using DicomViewer.Rendering.Abstractions;
 using DicomViewer.Rendering.Services;
+using DicomViewer.Wpf.Navigation;
+using DicomViewer.Wpf.Views;
 using DicomViewer.Wpf.ViewModels;
 using Prism.DryIoc;
 using Prism.Ioc;
@@ -35,23 +37,24 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<IViewportImageService, DicomViewportImageService>();
         containerRegistry.RegisterSingleton<WorkspaceService>();
         containerRegistry.RegisterSingleton<ExamWorkflowService>();
-        containerRegistry.RegisterSingleton<MainViewModel>();
+        containerRegistry.RegisterSingleton<ShellViewModel>();
+        containerRegistry.RegisterSingleton<ViewerWorkspaceViewModel>();
+        containerRegistry.RegisterSingleton<ExposureConsoleViewModel>();
+        containerRegistry.RegisterForNavigation<ViewerWorkspaceView>(ViewNames.ViewerWorkspaceView);
+        containerRegistry.RegisterForNavigation<ExposureConsoleView>(ViewNames.ExposureConsoleView);
         containerRegistry.RegisterSingleton<MainWindow>();
     }
 
     protected override void ConfigureViewModelLocator()
     {
         base.ConfigureViewModelLocator();
-        ViewModelLocationProvider.Register<MainWindow, MainViewModel>();
+        ViewModelLocationProvider.Register<MainWindow, ShellViewModel>();
+        ViewModelLocationProvider.Register<ViewerWorkspaceView, ViewerWorkspaceViewModel>();
+        ViewModelLocationProvider.Register<ExposureConsoleView, ExposureConsoleViewModel>();
     }
 
-    protected override async void OnInitialized()
+    protected override void OnInitialized()
     {
         base.OnInitialized();
-
-        if (MainWindow?.DataContext is MainViewModel viewModel)
-        {
-            await viewModel.InitializeAsync();
-        }
     }
 }
