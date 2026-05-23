@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using DicomViewer.Application.Models;
 using DicomViewer.Application.Services;
+using DicomViewer.Wpf.Navigation;
 using DicomViewer.Domain.Enums;
 using DicomViewer.Domain.ValueObjects;
 using Prism.Commands;
@@ -12,6 +14,7 @@ namespace DicomViewer.Wpf.ViewModels;
 public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 {
     private readonly ExamWorkflowService _examWorkflowService;
+    private readonly IRegionManager _regionManager;
     private bool _isApplyingConsoleSnapshot;
     private bool _isInitialized;
     private WorklistItem? _selectedWorklistItem;
@@ -23,6 +26,13 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private string _workflowStatusText = "-";
     private string _lastExposureSummaryText = "暂无模拟曝光结果。";
     private string _lastArtifactPathText = "-";
+    private string _pacsStatusText = "尚未发送到 PACS。";
+    private string _pacsDetailsText = "-";
+    private string _callingAeTitleText = PacsConfiguration.Default.CallingAeTitle;
+    private string _calledAeTitleText = PacsConfiguration.Default.CalledAeTitle;
+    private string _pacsHostText = PacsConfiguration.Default.Host;
+    private string _pacsPortText = PacsConfiguration.Default.Port.ToString();
+    private string _outputDirectoryText = PacsConfiguration.Default.OutputDirectory;
     private string _kilovoltagePeakText = ExposureParameters.Default.KilovoltagePeak.ToString("0.#");
     private string _tubeCurrentMilliampereText = ExposureParameters.Default.TubeCurrentMilliampere.ToString("0.#");
     private string _exposureTimeMillisecondsText = ExposureParameters.Default.ExposureTimeMilliseconds.ToString("0.#");
@@ -36,9 +46,10 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private bool _doorClosed = true;
     private bool _pacsAvailable = true;
 
-    public ExposureConsoleViewModel(ExamWorkflowService examWorkflowService)
+    public ExposureConsoleViewModel(ExamWorkflowService examWorkflowService, IRegionManager regionManager)
     {
         _examWorkflowService = examWorkflowService;
+        _regionManager = regionManager;
         WorklistItems = new ObservableCollection<WorklistItem>();
         InterlockMessages = new ObservableCollection<string>();
         AuditEntries = new ObservableCollection<string>();
@@ -46,7 +57,10 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         LoadWorklistCommand = new DelegateCommand(async () => await LoadWorklistAsync());
         RunInterlockCheckCommand = new DelegateCommand(RunInterlockCheck);
         ExecuteExposureCommand = new DelegateCommand(async () => await ExecuteExposureAsync()).ObservesCanExecute(() => CanExecuteExposure);
+        SendToPacsCommand = new DelegateCommand(async () => await SendToPacsAsync()).ObservesCanExecute(() => CanSendToPacs);
+        VerifyPacsConnectionCommand = new DelegateCommand(async () => await VerifyPacsConnectionAsync());
         ApplyExposureParametersCommand = new DelegateCommand(ApplyExposureParameters);
+        ApplyPacsConfigurationCommand = new DelegateCommand(ApplyPacsConfiguration);
     }
 
     public ObservableCollection<WorklistItem> WorklistItems { get; }
@@ -60,6 +74,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     public bool HasInterlockFailures => InterlockMessages.Count > 0;
 
     public bool CanExecuteExposure => SelectedWorklistItem is not null && InterlockMessages.Count == 0 && DeviceStateText == DeviceOperationalState.Ready.ToString();
+
+    public bool CanSendToPacs => LastArtifactPathText != "-";
 
     public WorklistItem? SelectedWorklistItem
     {
@@ -139,7 +155,55 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     public string LastArtifactPathText
     {
         get => _lastArtifactPathText;
-        private set => SetProperty(ref _lastArtifactPathText, value);
+        private set
+        {
+            if (SetProperty(ref _lastArtifactPathText, value))
+            {
+                RaisePropertyChanged(nameof(CanSendToPacs));
+            }
+        }
+    }
+
+    public string PacsStatusText
+    {
+        get => _pacsStatusText;
+        private set => SetProperty(ref _pacsStatusText, value);
+    }
+
+    public string PacsDetailsText
+    {
+        get => _pacsDetailsText;
+        private set => SetProperty(ref _pacsDetailsText, value);
+    }
+
+    public string CallingAeTitleText
+    {
+        get => _callingAeTitleText;
+        set => SetProperty(ref _callingAeTitleText, value);
+    }
+
+    public string CalledAeTitleText
+    {
+        get => _calledAeTitleText;
+        set => SetProperty(ref _calledAeTitleText, value);
+    }
+
+    public string PacsHostText
+    {
+        get => _pacsHostText;
+        set => SetProperty(ref _pacsHostText, value);
+    }
+
+    public string PacsPortText
+    {
+        get => _pacsPortText;
+        set => SetProperty(ref _pacsPortText, value);
+    }
+
+    public string OutputDirectoryText
+    {
+        get => _outputDirectoryText;
+        set => SetProperty(ref _outputDirectoryText, value);
     }
 
     public string KilovoltagePeakText
@@ -220,7 +284,13 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 
     public DelegateCommand ExecuteExposureCommand { get; }
 
+    public DelegateCommand SendToPacsCommand { get; }
+
+    public DelegateCommand VerifyPacsConnectionCommand { get; }
+
     public DelegateCommand ApplyExposureParametersCommand { get; }
+
+    public DelegateCommand ApplyPacsConfigurationCommand { get; }
 
     public bool IsNavigationTarget(NavigationContext navigationContext)
     {
@@ -256,6 +326,23 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         ApplyConsoleSnapshot(await _examWorkflowService.ExecuteExposureAsync());
     }
 
+    private async Task SendToPacsAsync()
+    {
+        ApplyPacsConfiguration();
+        ApplyConsoleSnapshot(await _examWorkflowService.SendToPacsAsync());
+
+        if (PacsStatusText.Contains("成功", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(LastArtifactPathText) && LastArtifactPathText != "-")
+        {
+            NavigateToViewer(LastArtifactPathText);
+        }
+    }
+
+    private async Task VerifyPacsConnectionAsync()
+    {
+        ApplyPacsConfiguration();
+        ApplyConsoleSnapshot(await _examWorkflowService.VerifyPacsConnectionAsync());
+    }
+
     private void RunInterlockCheck()
     {
         ApplyExposureParameters();
@@ -269,6 +356,11 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         ApplyConsoleSnapshot(_examWorkflowService.UpdateExposureParameters(exposureParameters));
     }
 
+    private void ApplyPacsConfiguration()
+    {
+        ApplyConsoleSnapshot(_examWorkflowService.UpdatePacsConfiguration(BuildPacsConfiguration()));
+    }
+
     private ExposureParameters BuildExposureParameters()
     {
         return new ExposureParameters(
@@ -280,6 +372,16 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             string.IsNullOrWhiteSpace(BodyPartText) ? ExposureParameters.Default.BodyPart : BodyPartText.Trim().ToUpperInvariant(),
             string.IsNullOrWhiteSpace(ProjectionText) ? ExposureParameters.Default.Projection : ProjectionText.Trim().ToUpperInvariant(),
             IsAutomaticExposureControlEnabled);
+    }
+
+    private PacsConfiguration BuildPacsConfiguration()
+    {
+        return new PacsConfiguration(
+            string.IsNullOrWhiteSpace(CallingAeTitleText) ? PacsConfiguration.Default.CallingAeTitle : CallingAeTitleText.Trim().ToUpperInvariant(),
+            string.IsNullOrWhiteSpace(CalledAeTitleText) ? PacsConfiguration.Default.CalledAeTitle : CalledAeTitleText.Trim().ToUpperInvariant(),
+            string.IsNullOrWhiteSpace(PacsHostText) ? PacsConfiguration.Default.Host : PacsHostText.Trim(),
+            int.TryParse(PacsPortText, out var port) ? port : PacsConfiguration.Default.Port,
+            string.IsNullOrWhiteSpace(OutputDirectoryText) ? PacsConfiguration.Default.OutputDirectory : OutputDirectoryText.Trim());
     }
 
     private void ApplyConsoleSnapshot(ConsoleSnapshot snapshot)
@@ -304,6 +406,14 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         WorkflowStatusText = snapshot.WorkflowStatus?.ToString() ?? "-";
         LastExposureSummaryText = snapshot.LastExposureResult?.PreviewText ?? "暂无模拟曝光结果。";
         LastArtifactPathText = snapshot.LastExposureResult?.ArtifactPath ?? "-";
+        PacsStatusText = snapshot.LastPacsStoreResult?.StatusText ?? "尚未发送到 PACS。";
+        PacsDetailsText = snapshot.LastPacsStoreResult?.Details ?? "-";
+
+        CallingAeTitleText = snapshot.PacsConfiguration.CallingAeTitle;
+        CalledAeTitleText = snapshot.PacsConfiguration.CalledAeTitle;
+        PacsHostText = snapshot.PacsConfiguration.Host;
+        PacsPortText = snapshot.PacsConfiguration.Port.ToString();
+        OutputDirectoryText = snapshot.PacsConfiguration.OutputDirectory;
 
         KilovoltagePeakText = snapshot.ExposureParameters.KilovoltagePeak.ToString("0.#");
         TubeCurrentMilliampereText = snapshot.ExposureParameters.TubeCurrentMilliampere.ToString("0.#");
@@ -330,10 +440,27 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 
         _isApplyingConsoleSnapshot = false;
         RaisePropertyChanged(nameof(CanExecuteExposure));
+        RaisePropertyChanged(nameof(CanSendToPacs));
     }
 
     private static double ParseDoubleOrFallback(string text, double fallback)
     {
         return double.TryParse(text, out var value) ? value : fallback;
+    }
+
+    private void NavigateToViewer(string dicomFilePath)
+    {
+        var importPath = Path.GetDirectoryName(dicomFilePath);
+        if (string.IsNullOrWhiteSpace(importPath))
+        {
+            return;
+        }
+
+        var parameters = new NavigationParameters
+        {
+            { "importPath", importPath },
+        };
+
+        _regionManager.RequestNavigate(RegionNames.MainContentRegion, ViewNames.ViewerWorkspaceView, parameters);
     }
 }

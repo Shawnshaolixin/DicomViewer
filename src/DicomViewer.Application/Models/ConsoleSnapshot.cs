@@ -7,6 +7,7 @@ public sealed record ConsoleSnapshot(
     IReadOnlyList<WorklistItem> WorklistItems,
     string? SelectedOrderId,
     ExposureParameters ExposureParameters,
+    PacsConfiguration PacsConfiguration,
     DeviceOperationalState DeviceState,
     ExamWorkflowStatus? WorkflowStatus,
     bool CanExpose,
@@ -16,4 +17,5 @@ public sealed record ConsoleSnapshot(
     string NotesText,
     IReadOnlyList<string> InterlockMessages,
     IReadOnlyList<string> AuditEntries,
-    ExposureResult? LastExposureResult);
+    ExposureResult? LastExposureResult,
+    PacsStoreResult? LastPacsStoreResult);

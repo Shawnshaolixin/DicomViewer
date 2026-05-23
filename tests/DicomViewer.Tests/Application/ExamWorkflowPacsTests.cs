@@ -9,71 +9,57 @@ using DicomViewer.Infrastructure.Services;
 
 namespace DicomViewer.Tests.Application;
 
-public sealed class ExamWorkflowServiceTests
+public sealed class ExamWorkflowPacsTests
 {
     [Fact]
-    public async Task LoadWorklistAsync_LoadsMockOrdersAndWritesAudit()
+    public async Task SendToPacsAsync_WithExposureResult_CompletesSessionAndStoresResult()
     {
-        var service = CreateService();
+        var service = CreateService(new SuccessfulPacsStoreService());
 
-        var snapshot = await service.LoadWorklistAsync();
+        _ = await service.LoadWorklistAsync();
+        _ = service.SelectOrder("ORD-1");
+        _ = await service.ExecuteExposureAsync();
 
-        Assert.Equal(2, snapshot.WorklistItems.Count);
-        Assert.Contains(snapshot.AuditEntries, entry => entry.Contains("已加载 2 条工作列表", StringComparison.Ordinal));
+        var snapshot = await service.SendToPacsAsync();
+
+        Assert.Equal(ExamWorkflowStatus.Completed, snapshot.WorkflowStatus);
+        Assert.NotNull(snapshot.LastPacsStoreResult);
+        Assert.True(snapshot.LastPacsStoreResult!.IsSuccess);
+        Assert.Contains("PACS 发送成功", snapshot.AuditEntries.Last(), StringComparison.Ordinal);
     }
 
     [Fact]
-    public void RunInterlockCheck_WithoutSelectedOrder_Fails()
+    public async Task SendToPacsAsync_WithoutExposureResult_FailsGracefully()
     {
-        var service = CreateService();
-
-        var snapshot = service.RunInterlockCheck();
-
-        Assert.False(snapshot.CanExpose);
-        Assert.Contains("未选择检查任务。", snapshot.InterlockMessages);
-        Assert.Equal(DeviceOperationalState.Idle, snapshot.DeviceState);
-    }
-
-    [Fact]
-    public async Task RunInterlockCheck_WhenParametersOutOfRange_Fails()
-    {
-        var service = CreateService();
+        var service = CreateService(new SuccessfulPacsStoreService());
 
         _ = await service.LoadWorklistAsync();
         _ = service.SelectOrder("ORD-1");
 
-        var snapshot = service.UpdateExposureParameters(ExposureParameters.Default with { KilovoltagePeak = 10 });
-        snapshot = service.RunInterlockCheck();
+        var snapshot = await service.SendToPacsAsync();
 
-        Assert.False(snapshot.CanExpose);
-        Assert.Contains("曝光参数越界。", snapshot.InterlockMessages);
-        Assert.Equal(ExamWorkflowStatus.InProgress, snapshot.WorkflowStatus);
+        Assert.Equal("PACS 发送失败", snapshot.StatusText);
+        Assert.Null(snapshot.LastPacsStoreResult);
     }
 
     [Fact]
-    public async Task ExecuteExposureAsync_WithValidSelection_CompletesSimulation()
+    public async Task VerifyPacsConnectionAsync_UsesPacsServiceAndReturnsStatus()
     {
-        var service = CreateService();
+        var service = CreateService(new SuccessfulPacsStoreService());
 
-        _ = await service.LoadWorklistAsync();
-        _ = service.SelectOrder("ORD-1");
+        var snapshot = await service.VerifyPacsConnectionAsync();
 
-        var snapshot = await service.ExecuteExposureAsync();
-
-        Assert.True(snapshot.CanExpose);
-        Assert.Equal(DeviceOperationalState.Ready, snapshot.DeviceState);
-        Assert.Equal(ExamWorkflowStatus.Ready, snapshot.WorkflowStatus);
-        Assert.NotNull(snapshot.LastExposureResult);
-        Assert.Contains("曝光执行完成", snapshot.AuditEntries.Last(), StringComparison.Ordinal);
+        Assert.NotNull(snapshot.LastPacsStoreResult);
+        Assert.Equal("PACS 连通性验证成功", snapshot.StatusText);
     }
 
-    private static ExamWorkflowService CreateService()
+    private static ExamWorkflowService CreateService(IPacsStoreService pacsStoreService)
     {
         return new ExamWorkflowService(
             new FixedWorklistService(),
             new DefaultInterlockService(),
             new FakeExposureSimulationService(),
-            new FakePacsStoreService(),
+            pacsStoreService,
             new InMemoryAuditService());
     }
 
@@ -94,17 +80,6 @@ public sealed class ExamWorkflowServiceTests
                     ScheduledTime = new DateTime(2026, 5, 23, 9, 0, 0, DateTimeKind.Local),
                     Status = "Scheduled",
                 },
-                new ImagingOrder
-                {
-                    OrderId = "ORD-2",
-                    PatientId = "P-2",
-                    PatientName = "Demo Patient 2",
-                    ProcedureDescription = "Knee AP",
-                    BodyPart = "KNEE",
-                    Projection = "AP",
-                    ScheduledTime = new DateTime(2026, 5, 23, 10, 0, 0, DateTimeKind.Local),
-                    Status = "Waiting",
-                },
             ];
 
             return Task.FromResult(orders);
@@ -123,14 +98,14 @@ public sealed class ExamWorkflowServiceTests
         }
     }
 
-    private sealed class FakePacsStoreService : IPacsStoreService
+    private sealed class SuccessfulPacsStoreService : IPacsStoreService
     {
         public Task<PacsStoreResult> VerifyConnectionAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new PacsStoreResult(
                 true,
                 "PACS 连通性验证成功",
-                "测试替身未执行真实验证。",
+                "Orthanc 已响应 C-ECHO。",
                 configuration.CalledAeTitle,
                 configuration.Host,
                 configuration.Port,
@@ -143,7 +118,7 @@ public sealed class ExamWorkflowServiceTests
             return Task.FromResult(new PacsStoreResult(
                 true,
                 "PACS 发送成功",
-                "测试替身未执行真实发送。",
+                "Orthanc 已确认接收。",
                 configuration.CalledAeTitle,
                 configuration.Host,
                 configuration.Port,

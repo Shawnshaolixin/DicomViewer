@@ -344,6 +344,12 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
 
     public void OnNavigatedTo(NavigationContext navigationContext)
     {
+        if (navigationContext.Parameters.TryGetValue("importPath", out string? importPath) && !string.IsNullOrWhiteSpace(importPath))
+        {
+            _ = LoadImportedWorkspaceAsync(importPath);
+            return;
+        }
+
         if (!_isInitialized)
         {
             _ = InitializeAsync();
@@ -413,6 +419,13 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
     private async Task ImportFolderAsync()
     {
         ApplySnapshot(await _workspaceService.LoadAsync(ImportPath));
+    }
+
+    private async Task LoadImportedWorkspaceAsync(string importPath)
+    {
+        ImportPath = importPath;
+        _isInitialized = true;
+        ApplySnapshot(await _workspaceService.LoadAsync(importPath));
     }
 
     private void ApplySnapshot(WorkspaceSnapshot snapshot)

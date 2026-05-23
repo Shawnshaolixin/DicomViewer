@@ -11,6 +11,7 @@ public sealed class ExamWorkflowService
     private readonly IWorklistService _worklistService;
     private readonly IInterlockService _interlockService;
     private readonly IExposureSimulationService _exposureSimulationService;
+    private readonly IPacsStoreService _pacsStoreService;
     private readonly IAuditService _auditService;
 
     private IReadOnlyList<ImagingOrder> _orders = Array.Empty<ImagingOrder>();
@@ -19,6 +20,8 @@ public sealed class ExamWorkflowService
     private ExposureParameters _exposureParameters = ExposureParameters.Default;
     private InterlockCheckResult _lastInterlockResult = InterlockCheckResult.Fail((InterlockCode.NoActiveOrder, "未选择检查任务。"));
     private ExposureResult? _lastExposureResult;
+    private PacsStoreResult? _lastPacsStoreResult;
+    private PacsConfiguration _pacsConfiguration = PacsConfiguration.Default;
     private string _statusText = "控制台尚未初始化";
     private string _notesText = "请先加载工作列表。";
 
@@ -26,11 +29,13 @@ public sealed class ExamWorkflowService
         IWorklistService worklistService,
         IInterlockService interlockService,
         IExposureSimulationService exposureSimulationService,
+        IPacsStoreService pacsStoreService,
         IAuditService auditService)
     {
         _worklistService = worklistService;
         _interlockService = interlockService;
         _exposureSimulationService = exposureSimulationService;
+        _pacsStoreService = pacsStoreService;
         _auditService = auditService;
     }
 
@@ -55,6 +60,7 @@ public sealed class ExamWorkflowService
     {
         _selectedOrder = _orders.FirstOrDefault(order => order.OrderId == orderId);
         _lastExposureResult = null;
+        _lastPacsStoreResult = null;
 
         if (_selectedOrder is null)
         {
@@ -100,6 +106,15 @@ public sealed class ExamWorkflowService
         _statusText = "曝光参数已更新";
         _notesText = $"kV={exposureParameters.KilovoltagePeak:0.#}, mA={exposureParameters.TubeCurrentMilliampere:0.#}, ms={exposureParameters.ExposureTimeMilliseconds:0.#}";
         _auditService.Record("修改曝光参数");
+        return BuildSnapshot();
+    }
+
+    public ConsoleSnapshot UpdatePacsConfiguration(PacsConfiguration pacsConfiguration)
+    {
+        _pacsConfiguration = pacsConfiguration;
+        _statusText = "PACS 配置已更新";
+        _notesText = $"{pacsConfiguration.CallingAeTitle} -> {pacsConfiguration.CalledAeTitle} @ {pacsConfiguration.Host}:{pacsConfiguration.Port}";
+        _auditService.Record("修改 PACS 配置");
         return BuildSnapshot();
     }
 
@@ -205,6 +220,59 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    public async Task<ConsoleSnapshot> SendToPacsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_lastExposureResult is null)
+        {
+            _statusText = "PACS 发送失败";
+            _notesText = "当前没有可发送的 DICOM 文件，请先执行曝光。";
+            _auditService.Record("PACS 发送失败: 无可发送文件");
+            return BuildSnapshot();
+        }
+
+        _statusText = "正在发送到 PACS";
+        _notesText = $"发送 {_lastExposureResult.ArtifactPath} 到 {_pacsConfiguration.Host}:{_pacsConfiguration.Port}";
+        _auditService.Record("PACS 发送开始");
+
+        if (_session is not null)
+        {
+            _session = _session with
+            {
+                WorkflowStatus = ExamWorkflowStatus.Sending,
+                DeviceState = DeviceOperationalState.Processing,
+            };
+        }
+
+        _lastPacsStoreResult = await _pacsStoreService.SendAsync(_lastExposureResult.ArtifactPath, _pacsConfiguration, cancellationToken);
+
+        if (_session is not null)
+        {
+            _session = _session with
+            {
+                WorkflowStatus = _lastPacsStoreResult.IsSuccess ? ExamWorkflowStatus.Completed : ExamWorkflowStatus.Failed,
+                DeviceState = _lastPacsStoreResult.IsSuccess ? DeviceOperationalState.Ready : DeviceOperationalState.Error,
+            };
+        }
+
+        _statusText = _lastPacsStoreResult.StatusText;
+        _notesText = _lastPacsStoreResult.Details;
+        _auditService.Record($"PACS 发送{(_lastPacsStoreResult.IsSuccess ? "成功" : "失败")}: {_lastPacsStoreResult.Details}");
+        return BuildSnapshot();
+    }
+
+    public async Task<ConsoleSnapshot> VerifyPacsConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        _statusText = "正在验证 PACS 连通性";
+        _notesText = $"使用 C-ECHO 验证 {_pacsConfiguration.Host}:{_pacsConfiguration.Port}";
+        _auditService.Record("PACS 连通性验证开始");
+
+        _lastPacsStoreResult = await _pacsStoreService.VerifyConnectionAsync(_pacsConfiguration, cancellationToken);
+        _statusText = _lastPacsStoreResult.StatusText;
+        _notesText = _lastPacsStoreResult.Details;
+        _auditService.Record($"PACS 连通性验证{(_lastPacsStoreResult.IsSuccess ? "成功" : "失败")}: {_lastPacsStoreResult.Details}");
+        return BuildSnapshot();
+    }
+
     private ConsoleSnapshot BuildSnapshot()
     {
         var worklistItems = _orders.Select(order => new WorklistItem(
@@ -229,6 +297,7 @@ public sealed class ExamWorkflowService
             worklistItems,
             _selectedOrder?.OrderId,
             _exposureParameters,
+            _pacsConfiguration,
             _session?.DeviceState ?? DeviceOperationalState.Idle,
             _session?.WorkflowStatus,
             _lastInterlockResult.IsPassed,
@@ -238,6 +307,7 @@ public sealed class ExamWorkflowService
             _notesText,
             _lastInterlockResult.Messages,
             _auditService.GetEntries().Select(entry => $"{entry.OccurredAtUtc:O} {entry.Message}").ToArray(),
-            _lastExposureResult);
+            _lastExposureResult,
+            _lastPacsStoreResult);
     }
 }

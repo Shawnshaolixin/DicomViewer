@@ -59,6 +59,8 @@
                         <Button Content="加载工作列表" Command="{Binding LoadWorklistCommand}" />
                         <Button Content="联锁检查" Command="{Binding RunInterlockCheckCommand}" />
                         <Button Content="执行曝光" Command="{Binding ExecuteExposureCommand}" />
+                        <Button Content="验证连接" Command="{Binding VerifyPacsConnectionCommand}" />
+                        <Button Content="发送 PACS" Command="{Binding SendToPacsCommand}" />
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -108,6 +110,35 @@
             </StackPanel>
 
             <StackPanel Grid.Row="1" Grid.Column="2">
+                <Border Margin="0,16,0,0" Padding="16" Background="#16202A" CornerRadius="12">
+                    <StackPanel>
+                        <TextBlock Text="PACS 配置" FontSize="18" FontWeight="SemiBold" />
+                        <UniformGrid Columns="2" Margin="0,12,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Calling AE" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding CallingAeTitleText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Called AE" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding CalledAeTitleText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Host" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding PacsHostText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Port" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding PacsPortText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <TextBlock Text="输出目录" Foreground="#9FB0BC" />
+                        <TextBox Text="{Binding OutputDirectoryText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                        <Button Content="应用 PACS 配置" Command="{Binding ApplyPacsConfigurationCommand}" Margin="0,12,0,0" />
+                    </StackPanel>
+                </Border>
+
                 <Border Margin="0,16,0,0" Padding="16" Background="#16202A" CornerRadius="12">
                     <StackPanel>
                         <TextBlock Text="曝光参数" FontSize="18" FontWeight="SemiBold" />
@@ -188,6 +219,9 @@
                         <TextBlock Text="{Binding LastArtifactPathText}" TextWrapping="Wrap" Margin="0,4,0,10" Foreground="#C4D2DB" />
                         <TextBlock Text="控制台说明" Foreground="#9FB0BC" />
                         <TextBlock Text="{Binding ConsoleNotesText}" TextWrapping="Wrap" Margin="0,4,0,10" Foreground="#C4D2DB" />
+                        <TextBlock Text="PACS 发送状态" Foreground="#9FB0BC" />
+                        <TextBlock Text="{Binding PacsStatusText}" Margin="0,4,0,4" />
+                        <TextBlock Text="{Binding PacsDetailsText}" TextWrapping="Wrap" Margin="0,0,0,10" Foreground="#C4D2DB" />
                         <TextBlock Text="审计日志" Foreground="#9FB0BC" />
                         <ListBox ItemsSource="{Binding AuditEntries}"
                                  Background="#10171E"
