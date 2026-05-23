@@ -188,6 +188,7 @@ public sealed class ExamWorkflowService
         };
 
         _lastExposureResult = await _exposureSimulationService.RunAsync(_session, cancellationToken);
+        _auditService.Record($"DICOM 生成: {_lastExposureResult.ArtifactPath}");
 
         _session = _session with
         {

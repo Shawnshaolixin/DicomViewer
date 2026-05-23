@@ -1,6 +1,7 @@
 ﻿using DicomViewer.Application.Abstractions;
 using DicomViewer.Application.Services;
 using DicomViewer.Infrastructure.Data;
+using DicomViewer.Infrastructure.Dicom;
 using DicomViewer.Infrastructure.Imaging;
 using DicomViewer.Infrastructure.Persistence;
 using DicomViewer.Infrastructure.Services;
@@ -27,6 +28,7 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<IStudyCatalogService, FileSystemStudyCatalogService>();
         containerRegistry.RegisterSingleton<IWorklistService, MockWorklistService>();
         containerRegistry.RegisterSingleton<IInterlockService, DefaultInterlockService>();
+        containerRegistry.RegisterSingleton<SimulatedDicomBuilder>();
         containerRegistry.RegisterSingleton<IExposureSimulationService, MockExposureSimulationService>();
         containerRegistry.RegisterSingleton<IAuditService, InMemoryAuditService>();
         containerRegistry.RegisterSingleton<IImageRenderService, PlaceholderRenderService>();
