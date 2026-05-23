@@ -5,6 +5,10 @@ using FellowOakDicom.IO.Buffer;
 
 namespace DicomViewer.Infrastructure.Dicom;
 
+/// <summary>
+/// 构造一份带基础元数据和模拟像素的 DICOM 文件。
+/// 它是曝光模拟服务生成可回看、可发送影像文件的底层实现。
+/// </summary>
 public sealed class SimulatedDicomBuilder
 {
     private const int ImageWidth = 256;
@@ -21,6 +25,9 @@ public sealed class SimulatedDicomBuilder
             : outputDirectory;
     }
 
+    /// <summary>
+    /// 根据检查会话和输出参数生成一份 Secondary Capture DICOM 文件。
+    /// </summary>
     public async Task<string> BuildAsync(
         ExamSession session,
         string imageId,
@@ -82,6 +89,9 @@ public sealed class SimulatedDicomBuilder
         return filePath;
     }
 
+    /// <summary>
+    /// 生成带简单解剖纹理、中心增强和噪声的 8 位灰度模拟像素矩阵。
+    /// </summary>
     private static byte[] GeneratePixels(ExamSession session, string imageId)
     {
         var pixels = new byte[ImageWidth * ImageHeight];

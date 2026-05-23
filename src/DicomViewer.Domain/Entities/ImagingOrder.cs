@@ -1,5 +1,8 @@
 namespace DicomViewer.Domain.Entities;
 
+/// <summary>
+/// 表示工作列表中的一条检查申请单。
+/// </summary>
 public sealed class ImagingOrder
 {
     public required string OrderId { get; init; }

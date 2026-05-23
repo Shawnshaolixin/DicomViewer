@@ -7,8 +7,15 @@ using FellowOakDicom.Imaging.Render;
 
 namespace DicomViewer.Infrastructure.Imaging;
 
+/// <summary>
+/// 负责把 DICOM 像素数据转换为查看器可直接显示的灰度位图数据。
+/// 当前实现有意只覆盖学习项目最核心的灰度图像路径，避免过早引入彩色图和调色板复杂度。
+/// </summary>
 public sealed class DicomViewportImageService : IViewportImageService
 {
+    /// <summary>
+    /// 加载指定帧的像素数据，并依据窗宽窗位映射为 Gray8 图像。
+    /// </summary>
     public ViewportLoadResult TryLoad(string filePath, int frameIndex, WindowLevel windowLevel)
     {
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -56,6 +63,9 @@ public sealed class DicomViewportImageService : IViewportImageService
         }
     }
 
+    /// <summary>
+    /// 把 8 位灰度原始像素映射为查看器使用的字节流。
+    /// </summary>
     private static ViewportImageData BuildImage(
         byte[] source,
         int width,
@@ -74,6 +84,9 @@ public sealed class DicomViewportImageService : IViewportImageService
         return new ViewportImageData(pixels, width, height, width);
     }
 
+    /// <summary>
+    /// 把 16 位无符号灰度原始像素映射为查看器使用的字节流。
+    /// </summary>
     private static ViewportImageData BuildImage(
         ushort[] source,
         int width,
@@ -92,6 +105,9 @@ public sealed class DicomViewportImageService : IViewportImageService
         return new ViewportImageData(pixels, width, height, width);
     }
 
+    /// <summary>
+    /// 把 16 位有符号灰度原始像素映射为查看器使用的字节流。
+    /// </summary>
     private static ViewportImageData BuildImage(
         short[] source,
         int width,
@@ -110,6 +126,9 @@ public sealed class DicomViewportImageService : IViewportImageService
         return new ViewportImageData(pixels, width, height, width);
     }
 
+    /// <summary>
+    /// 先应用 Rescale Slope/Intercept，再按窗宽窗位压缩到 0-255 灰度区间。
+    /// </summary>
     private static byte MapToByte(double sourceValue, WindowLevel windowLevel, bool invert, double slope, double intercept)
     {
         // 先应用 modality LUT 的线性部分，再做窗宽窗位压缩到 0-255，便于 WPF 直接显示 Gray8。

@@ -6,6 +6,10 @@ using DicomViewer.Domain.ValueObjects;
 
 namespace DicomViewer.Application.Services;
 
+/// <summary>
+/// 管理曝光控制台的检查流程状态。
+/// 该服务串联工作列表、联锁检查、模拟曝光、PACS 发送和审计记录，并把过程状态汇总为 <see cref="ConsoleSnapshot"/>。
+/// </summary>
 public sealed class ExamWorkflowService
 {
     private readonly IWorklistService _worklistService;
@@ -40,6 +44,9 @@ public sealed class ExamWorkflowService
         _auditService = auditService;
     }
 
+    /// <summary>
+    /// 从工作列表服务加载待检查任务。
+    /// </summary>
     public bool DetectorConnected { get; private set; } = true;
 
     public bool TubeWarmedUp { get; private set; } = true;
@@ -48,6 +55,9 @@ public sealed class ExamWorkflowService
 
     public bool PacsAvailable { get; private set; } = true;
 
+    /// <summary>
+    /// 从工作列表服务加载待检查任务。
+    /// </summary>
     public async Task<ConsoleSnapshot> LoadWorklistAsync(CancellationToken cancellationToken = default)
     {
         _orders = await _worklistService.LoadAsync(cancellationToken);
@@ -57,6 +67,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 选择工作列表中的一条检查任务，并为其创建检查会话。
+    /// </summary>
     public ConsoleSnapshot SelectOrder(string orderId)
     {
         _selectedOrder = _orders.FirstOrDefault(order => order.OrderId == orderId);
@@ -95,6 +108,9 @@ public sealed class ExamWorkflowService
         return RunInterlockCheck();
     }
 
+    /// <summary>
+    /// 更新当前会话使用的曝光参数。
+    /// </summary>
     public ConsoleSnapshot UpdateExposureParameters(ExposureParameters exposureParameters)
     {
         _exposureParameters = exposureParameters;
@@ -110,6 +126,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 更新 PACS 连接配置。
+    /// </summary>
     public ConsoleSnapshot UpdatePacsConfiguration(PacsConfiguration pacsConfiguration)
     {
         _pacsConfiguration = pacsConfiguration;
@@ -119,6 +138,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 更新联锁检查使用的参数范围。
+    /// </summary>
     public ConsoleSnapshot UpdateExposureParameterRange(ExposureParameterRange exposureParameterRange)
     {
         _exposureParameterRange = exposureParameterRange;
@@ -128,6 +150,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 更新设备联锁相关的运行标志，例如探测器、机房门和 PACS 可用性。
+    /// </summary>
     public ConsoleSnapshot SetOperationalFlags(bool detectorConnected, bool tubeWarmedUp, bool doorClosed, bool pacsAvailable)
     {
         DetectorConnected = detectorConnected;
@@ -140,6 +165,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 执行联锁检查，并根据结果把设备状态推进到 Ready 或回退到 Preparing。
+    /// </summary>
     public ConsoleSnapshot RunInterlockCheck()
     {
         var deviceState = _session?.DeviceState ?? DeviceOperationalState.Idle;
@@ -189,6 +217,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 执行一次模拟曝光，生成 DICOM 文件并刷新当前会话状态。
+    /// </summary>
     public async Task<ConsoleSnapshot> ExecuteExposureAsync(CancellationToken cancellationToken = default)
     {
         _ = RunInterlockCheck();
@@ -231,6 +262,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 将最近一次曝光生成的 DICOM 文件发送到 PACS。
+    /// </summary>
     public async Task<ConsoleSnapshot> SendToPacsAsync(CancellationToken cancellationToken = default)
     {
         if (_lastExposureResult is null)
@@ -271,6 +305,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 使用 C-ECHO 验证当前 PACS 配置是否可达。
+    /// </summary>
     public async Task<ConsoleSnapshot> VerifyPacsConnectionAsync(CancellationToken cancellationToken = default)
     {
         _statusText = "正在验证 PACS 连通性";
@@ -284,6 +321,9 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 把当前工作列表、设备状态、联锁结果和审计记录汇总为控制台快照。
+    /// </summary>
     private ConsoleSnapshot BuildSnapshot()
     {
         var worklistItems = _orders.Select(order => new WorklistItem(

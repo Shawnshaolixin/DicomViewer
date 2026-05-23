@@ -11,6 +11,10 @@ using Prism.Navigation.Regions;
 
 namespace DicomViewer.Wpf.ViewModels;
 
+/// <summary>
+/// 曝光控制台页面的主 ViewModel。
+/// 它负责接收界面输入、调用 <see cref="ExamWorkflowService"/> 推进检查流程，并把控制台快照同步回界面。
+/// </summary>
 public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 {
     private readonly ExamWorkflowService _examWorkflowService;
@@ -367,11 +371,17 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 
     public DelegateCommand ApplyPacsConfigurationCommand { get; }
 
+    /// <summary>
+    /// Prism 导航始终复用当前控制台页面实例。
+    /// </summary>
     public bool IsNavigationTarget(NavigationContext navigationContext)
     {
         return true;
     }
 
+    /// <summary>
+    /// 首次进入控制台页面时加载工作列表。
+    /// </summary>
     public void OnNavigatedTo(NavigationContext navigationContext)
     {
         if (!_isInitialized)
@@ -380,27 +390,42 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         }
     }
 
+    /// <summary>
+    /// 当前页面离开时无需额外清理。
+    /// </summary>
     public void OnNavigatedFrom(NavigationContext navigationContext)
     {
     }
 
+    /// <summary>
+    /// 执行控制台首屏初始化并拉取工作列表。
+    /// </summary>
     private async Task InitializeAsync()
     {
         _isInitialized = true;
         ApplyConsoleSnapshot(await _examWorkflowService.LoadWorklistAsync());
     }
 
+    /// <summary>
+    /// 手动刷新工作列表。
+    /// </summary>
     private async Task LoadWorklistAsync()
     {
         ApplyConsoleSnapshot(await _examWorkflowService.LoadWorklistAsync());
     }
 
+    /// <summary>
+    /// 先提交界面中的曝光参数，再执行一次模拟曝光。
+    /// </summary>
     private async Task ExecuteExposureAsync()
     {
         ApplyExposureParameters();
         ApplyConsoleSnapshot(await _examWorkflowService.ExecuteExposureAsync());
     }
 
+    /// <summary>
+    /// 先提交 PACS 配置，再发送最近一次生成的 DICOM；发送成功后自动跳转回查看器。
+    /// </summary>
     private async Task SendToPacsAsync()
     {
         ApplyPacsConfiguration();
@@ -412,12 +437,18 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         }
     }
 
+    /// <summary>
+    /// 使用当前界面配置验证 PACS 连通性。
+    /// </summary>
     private async Task VerifyPacsConnectionAsync()
     {
         ApplyPacsConfiguration();
         ApplyConsoleSnapshot(await _examWorkflowService.VerifyPacsConnectionAsync());
     }
 
+    /// <summary>
+    /// 在已有曝光结果时跳转到查看器页面进行回看。
+    /// </summary>
     private void ReviewExposure()
     {
         if (string.IsNullOrWhiteSpace(LastArtifactPathText) || LastArtifactPathText == "-")
@@ -428,12 +459,18 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         NavigateToViewer(LastArtifactPathText);
     }
 
+    /// <summary>
+    /// 把当前界面状态提交到服务层并执行联锁检查。
+    /// </summary>
     private void RunInterlockCheck()
     {
         ApplyExposureParameters();
         ApplyConsoleSnapshot(_examWorkflowService.RunInterlockCheck());
     }
 
+    /// <summary>
+    /// 统一收集界面中的曝光参数、参数范围和设备状态，并同步到应用服务。
+    /// </summary>
     private void ApplyExposureParameters()
     {
         var exposureParameters = BuildExposureParameters();
@@ -443,11 +480,17 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         ApplyConsoleSnapshot(_examWorkflowService.UpdateExposureParameters(exposureParameters));
     }
 
+    /// <summary>
+    /// 把界面中的 PACS 连接信息同步到应用服务。
+    /// </summary>
     private void ApplyPacsConfiguration()
     {
         ApplyConsoleSnapshot(_examWorkflowService.UpdatePacsConfiguration(BuildPacsConfiguration()));
     }
 
+    /// <summary>
+    /// 将文本输入框中的曝光参数解析为强类型值对象。
+    /// </summary>
     private ExposureParameters BuildExposureParameters()
     {
         return new ExposureParameters(
@@ -461,6 +504,9 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             IsAutomaticExposureControlEnabled);
     }
 
+            /// <summary>
+            /// 构造联锁检查用的曝光参数范围，并自动纠正最小值和最大值顺序。
+            /// </summary>
     private ExposureParameterRange BuildExposureParameterRange()
     {
         var minKilovoltagePeak = ParseDoubleOrFallback(MinKilovoltagePeakText, ExposureParameterRange.Default.MinKilovoltagePeak);
@@ -487,6 +533,9 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             Math.Max(minSourceToImageDistance, maxSourceToImageDistance));
     }
 
+            /// <summary>
+            /// 根据界面输入构造 PACS 配置对象。
+            /// </summary>
     private PacsConfiguration BuildPacsConfiguration()
     {
         return new PacsConfiguration(
@@ -497,6 +546,9 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             string.IsNullOrWhiteSpace(OutputDirectoryText) ? PacsConfiguration.Default.OutputDirectory : OutputDirectoryText.Trim());
     }
 
+            /// <summary>
+            /// 把应用服务返回的控制台快照投影到所有绑定属性、工作列表和审计日志。
+            /// </summary>
     private void ApplyConsoleSnapshot(ConsoleSnapshot snapshot)
     {
         _isApplyingConsoleSnapshot = true;
@@ -567,11 +619,17 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         RaisePropertyChanged(nameof(CanReviewExposure));
     }
 
+    /// <summary>
+    /// 尝试把文本解析为双精度数，失败时回退到默认值。
+    /// </summary>
     private static double ParseDoubleOrFallback(string text, double fallback)
     {
         return double.TryParse(text, out var value) ? value : fallback;
     }
 
+    /// <summary>
+    /// 导航到查看器页面，并把生成文件所在目录作为导入目录传递过去。
+    /// </summary>
     private void NavigateToViewer(string dicomFilePath)
     {
         var importPath = Path.GetDirectoryName(dicomFilePath);

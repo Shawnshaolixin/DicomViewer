@@ -19,13 +19,22 @@ using Prism.Mvvm;
 
 namespace DicomViewer.Wpf;
 
+/// <summary>
+/// WPF 应用程序入口，负责配置 Prism 容器、导航和主窗口。
+/// </summary>
 public partial class App : PrismApplication
 {
+    /// <summary>
+    /// 创建应用的主壳窗口。
+    /// </summary>
     protected override System.Windows.Window CreateShell()
     {
         return Container.Resolve<MainWindow>();
     }
 
+    /// <summary>
+    /// 注册应用运行所需的核心服务、ViewModel 和导航视图。
+    /// </summary>
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
         containerRegistry.RegisterSingleton<IStudyCatalogService, FileSystemStudyCatalogService>();
@@ -47,6 +56,9 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<MainWindow>();
     }
 
+    /// <summary>
+    /// 显式绑定视图与 ViewModel，便于学习者理解 Prism 的定位规则。
+    /// </summary>
     protected override void ConfigureViewModelLocator()
     {
         base.ConfigureViewModelLocator();
@@ -55,6 +67,9 @@ public partial class App : PrismApplication
         ViewModelLocationProvider.Register<ExposureConsoleView, ExposureConsoleViewModel>();
     }
 
+    /// <summary>
+    /// 预留应用初始化扩展点。
+    /// </summary>
     protected override void OnInitialized()
     {
         base.OnInitialized();

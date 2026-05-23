@@ -5,6 +5,9 @@ using DicomViewer.Infrastructure.Dicom;
 
 namespace DicomViewer.Infrastructure.Simulation;
 
+/// <summary>
+/// 通过构造模拟像素和 DICOM 文件来完成一次“教学用”曝光。
+/// </summary>
 public sealed class MockExposureSimulationService : IExposureSimulationService
 {
     private readonly SimulatedDicomBuilder _dicomBuilder;
@@ -14,6 +17,9 @@ public sealed class MockExposureSimulationService : IExposureSimulationService
         _dicomBuilder = dicomBuilder;
     }
 
+    /// <summary>
+    /// 生成模拟影像文件，并返回供控制台展示的摘要信息。
+    /// </summary>
     public async Task<ExposureResult> RunAsync(ExamSession session, string outputDirectory, CancellationToken cancellationToken = default)
     {
         var acquiredAtUtc = DateTime.UtcNow;

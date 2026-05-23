@@ -5,8 +5,15 @@ using FellowOakDicom.Network.Client;
 
 namespace DicomViewer.Infrastructure.Pacs;
 
+/// <summary>
+/// 基于 fo-dicom 网络客户端实现 PACS 验证与 C-STORE 发送。
+/// 默认目标场景是兼容 Orthanc 的学习环境。
+/// </summary>
 public sealed class OrthancStoreService : IPacsStoreService
 {
+    /// <summary>
+    /// 发送 C-ECHO 请求，验证远端 PACS AE 是否可达。
+    /// </summary>
     public async Task<PacsStoreResult> VerifyConnectionAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
     {
         try
@@ -61,6 +68,9 @@ public sealed class OrthancStoreService : IPacsStoreService
         }
     }
 
+    /// <summary>
+    /// 使用 C-STORE 将本地 DICOM 文件发送到远端 PACS。
+    /// </summary>
     public async Task<PacsStoreResult> SendAsync(string dicomFilePath, PacsConfiguration configuration, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(dicomFilePath) || !File.Exists(dicomFilePath))

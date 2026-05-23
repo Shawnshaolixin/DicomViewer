@@ -1,5 +1,8 @@
 namespace DicomViewer.Domain.ValueObjects;
 
+/// <summary>
+/// 表示联锁检查允许的曝光参数范围。
+/// </summary>
 public sealed record ExposureParameterRange(
     double MinKilovoltagePeak,
     double MaxKilovoltagePeak,
@@ -12,6 +15,9 @@ public sealed record ExposureParameterRange(
     double MinSourceToImageDistanceMillimeter,
     double MaxSourceToImageDistanceMillimeter)
 {
+    /// <summary>
+    /// 控制台初始化时使用的默认参数范围。
+    /// </summary>
     public static ExposureParameterRange Default { get; } = new(
         40,
         150,

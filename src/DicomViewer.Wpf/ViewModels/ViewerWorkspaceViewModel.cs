@@ -12,6 +12,10 @@ using Prism.Navigation.Regions;
 
 namespace DicomViewer.Wpf.ViewModels;
 
+/// <summary>
+/// 影像查看器页面的主 ViewModel。
+/// 它把用户命令转换为 <see cref="WorkspaceService"/> 调用，并把返回的 <see cref="WorkspaceSnapshot"/> 回填到界面绑定属性。
+/// </summary>
 public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
 {
     private readonly WorkspaceService _workspaceService;
@@ -337,11 +341,17 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
 
     public DelegateCommand ResetViewCommand { get; }
 
+    /// <summary>
+    /// Prism 导航始终复用当前查看器页面实例。
+    /// </summary>
     public bool IsNavigationTarget(NavigationContext navigationContext)
     {
         return true;
     }
 
+    /// <summary>
+    /// 进入页面时决定是加载样例工作区，还是根据导航参数导入指定目录。
+    /// </summary>
     public void OnNavigatedTo(NavigationContext navigationContext)
     {
         if (navigationContext.Parameters.TryGetValue("importPath", out string? importPath) && !string.IsNullOrWhiteSpace(importPath))
@@ -356,10 +366,16 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         }
     }
 
+    /// <summary>
+    /// 当前页面离开时无需执行额外清理逻辑。
+    /// </summary>
     public void OnNavigatedFrom(NavigationContext navigationContext)
     {
     }
 
+    /// <summary>
+    /// 将鼠标滚轮增量转换为缩放操作。
+    /// </summary>
     public void ZoomFromWheel(double delta)
     {
         if (!HasSeriesItems)
@@ -370,6 +386,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         ApplySnapshot(_workspaceService.Zoom(delta >= 0 ? 1.1 : 1.0 / 1.1));
     }
 
+    /// <summary>
+    /// 处理鼠标拖拽平移。
+    /// </summary>
     public void PanViewport(double deltaX, double deltaY)
     {
         if (!HasSeriesItems)
@@ -380,6 +399,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         ApplySnapshot(_workspaceService.Pan(deltaX, deltaY));
     }
 
+    /// <summary>
+    /// 将拖拽位移映射为窗宽窗位的增量调整。
+    /// </summary>
     public void AdjustWindowLevelFromDrag(double deltaX, double deltaY)
     {
         if (!HasSeriesItems)
@@ -390,6 +412,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         ApplySnapshot(_workspaceService.AdjustWindowLevel(deltaX * 2.0, -deltaY * 2.0));
     }
 
+    /// <summary>
+    /// 把界面坐标中的一个测量点提交给工作区服务。
+    /// </summary>
     public void AddMeasurementPoint(Point imagePoint)
     {
         if (!HasSeriesItems)
@@ -400,6 +425,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         ApplySnapshot(_workspaceService.AddMeasurementPoint(new Point2D(imagePoint.X, imagePoint.Y)));
     }
 
+    /// <summary>
+    /// 更新尚未完成的测量预览终点。
+    /// </summary>
     public void UpdateMeasurementPreview(Point imagePoint)
     {
         if (!HasSeriesItems)
@@ -410,17 +438,26 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         ApplySnapshot(_workspaceService.UpdateMeasurementPreview(new Point2D(imagePoint.X, imagePoint.Y)));
     }
 
+    /// <summary>
+    /// 初次进入页面时加载默认样例工作区。
+    /// </summary>
     private async Task InitializeAsync()
     {
         _isInitialized = true;
         ApplySnapshot(await _workspaceService.LoadAsync());
     }
 
+    /// <summary>
+    /// 根据当前输入框中的目录加载工作区。
+    /// </summary>
     private async Task ImportFolderAsync()
     {
         ApplySnapshot(await _workspaceService.LoadAsync(ImportPath));
     }
 
+    /// <summary>
+    /// 处理来自曝光控制台的导航请求，并自动导入生成文件所在目录。
+    /// </summary>
     private async Task LoadImportedWorkspaceAsync(string importPath)
     {
         ImportPath = importPath;
@@ -428,6 +465,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         ApplySnapshot(await _workspaceService.LoadAsync(importPath));
     }
 
+    /// <summary>
+    /// 把应用服务返回的快照完整投影到 UI 绑定属性、序列列表和测量覆盖层。
+    /// </summary>
     private void ApplySnapshot(WorkspaceSnapshot snapshot)
     {
         _isApplyingSnapshot = true;
@@ -486,6 +526,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
             : MeasurementListItems.FirstOrDefault(item => item.Id == selectedMeasurementId.Value);
     }
 
+    /// <summary>
+    /// 将领域层测量标注转换为 WPF 覆盖层的可视化模型。
+    /// </summary>
     private static MeasurementOverlayItem ToOverlayItem(MeasurementAnnotation measurement)
     {
         var points = new PointCollection(measurement.Points.Select(point => new Point(point.X, point.Y)));
@@ -507,6 +550,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
             measurement.IsPreview ? 1.5 : 2.0);
     }
 
+            /// <summary>
+            /// 删除当前选中的正式测量标注。
+            /// </summary>
     private void DeleteSelectedMeasurement()
     {
         if (SelectedMeasurement is null)
@@ -517,6 +563,9 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
         ApplySnapshot(_workspaceService.RemoveMeasurement(SelectedMeasurement.Id));
     }
 
+    /// <summary>
+    /// 把服务层提供的灰度像素数据包装为 WPF 可显示的 <see cref="BitmapSource"/>。
+    /// </summary>
     private static BitmapSource? CreateBitmapSource(ViewportImageData? image)
     {
         if (image is null || image.Width <= 0 || image.Height <= 0 || image.Pixels.Length == 0)

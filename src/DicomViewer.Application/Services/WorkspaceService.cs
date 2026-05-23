@@ -8,6 +8,10 @@ using DicomViewer.Rendering.Abstractions;
 
 namespace DicomViewer.Application.Services;
 
+/// <summary>
+/// 管理影像查看工作区的核心状态。
+/// 该服务负责把目录加载结果、当前序列/切片/帧位置、视图变换和测量结果整合为可供界面直接绑定的 <see cref="WorkspaceSnapshot"/>。
+/// </summary>
 public sealed class WorkspaceService
 {
     private const double MinimumVectorMagnitude = 1e-10;
@@ -40,6 +44,9 @@ public sealed class WorkspaceService
         _viewportImageService = viewportImageService;
     }
 
+    /// <summary>
+    /// 加载样例数据或指定目录中的 DICOM 元数据，并重置当前工作区状态。
+    /// </summary>
     public async Task<WorkspaceSnapshot> LoadAsync(string? sourcePath = null, CancellationToken cancellationToken = default)
     {
         var loadResult = await _studyCatalogService.LoadAsync(sourcePath, cancellationToken);
@@ -63,6 +70,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 切换当前激活的序列，并将切片、帧和测量草稿重置到初始位置。
+    /// </summary>
     public WorkspaceSnapshot SelectSeries(string seriesInstanceUid)
     {
         var index = _seriesList
@@ -77,6 +87,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 在当前序列内移动切片索引。
+    /// </summary>
     public WorkspaceSnapshot MoveSlice(int delta)
     {
         var series = GetActiveSeries();
@@ -91,6 +104,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 在当前多帧图像内移动帧索引。
+    /// </summary>
     public WorkspaceSnapshot MoveFrame(int delta)
     {
         var image = GetActiveImage();
@@ -104,6 +120,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 切换查看器工具模式；离开测量工具时会清空未完成的测量草稿。
+    /// </summary>
     public WorkspaceSnapshot SetTool(ViewerToolMode toolMode)
     {
         _toolMode = toolMode;
@@ -115,6 +134,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 将缩放、平移、旋转、翻转和窗宽窗位恢复为默认状态。
+    /// </summary>
     public WorkspaceSnapshot ResetView()
     {
         _viewTransform = ViewTransform.Default;
@@ -123,6 +145,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 按比例调整当前视图缩放。
+    /// </summary>
     public WorkspaceSnapshot Zoom(double factor)
     {
         var nextZoom = Math.Clamp(_viewTransform.Zoom * factor, 0.25, 8.0);
@@ -130,6 +155,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 以角度增量旋转当前视图。
+    /// </summary>
     public WorkspaceSnapshot Rotate(double deltaDegrees)
     {
         var nextRotation = (_viewTransform.RotationDegrees + deltaDegrees) % 360.0;
@@ -142,18 +170,27 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 切换水平翻转状态。
+    /// </summary>
     public WorkspaceSnapshot ToggleFlipHorizontal()
     {
         _viewTransform = _viewTransform with { FlipHorizontal = !_viewTransform.FlipHorizontal };
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 切换垂直翻转状态。
+    /// </summary>
     public WorkspaceSnapshot ToggleFlipVertical()
     {
         _viewTransform = _viewTransform with { FlipVertical = !_viewTransform.FlipVertical };
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 按图像坐标增量平移当前视图。
+    /// </summary>
     public WorkspaceSnapshot Pan(double deltaX, double deltaY)
     {
         _viewTransform = _viewTransform with
@@ -165,12 +202,18 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 应用预设窗宽窗位。
+    /// </summary>
     public WorkspaceSnapshot ApplyWindowLevelPreset(WindowLevel windowLevel)
     {
         _activeWindowLevel = windowLevel;
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 基于当前窗宽窗位做增量调整。
+    /// </summary>
     public WorkspaceSnapshot AdjustWindowLevel(double widthDelta, double centerDelta)
     {
         var baseWindowLevel = GetEffectiveWindowLevel();
@@ -180,6 +223,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 向当前测量草稿追加一个点；当点数满足长度或角度测量要求时，会生成正式标注。
+    /// </summary>
     public WorkspaceSnapshot AddMeasurementPoint(Point2D point)
     {
         if (!IsMeasurementTool(_toolMode))
@@ -217,6 +263,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 更新正在绘制的测量预览点。
+    /// </summary>
     public WorkspaceSnapshot UpdateMeasurementPreview(Point2D point)
     {
         if (_measurementDraft is null)
@@ -234,6 +283,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 清除当前序列下的全部测量结果。
+    /// </summary>
     public WorkspaceSnapshot ClearMeasurements()
     {
         var series = GetActiveSeries();
@@ -246,6 +298,9 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 删除指定测量标注。
+    /// </summary>
     public WorkspaceSnapshot RemoveMeasurement(Guid measurementId)
     {
         var series = GetActiveSeries();
@@ -261,6 +316,10 @@ public sealed class WorkspaceService
         return BuildSnapshot();
     }
 
+    /// <summary>
+    /// 根据内部状态构建界面可直接绑定的快照。
+    /// 这是应用服务与 ViewModel 之间的主要边界。
+    /// </summary>
     private WorkspaceSnapshot BuildSnapshot()
     {
         var series = GetActiveSeries();
@@ -329,6 +388,9 @@ public sealed class WorkspaceService
             GetMeasurementsForSnapshot(series.SeriesInstanceUid, image));
     }
 
+            /// <summary>
+            /// 返回当前有效的窗宽窗位，优先级为用户调整值，其次为图像默认值。
+            /// </summary>
     private WindowLevel GetEffectiveWindowLevel(ImageInstance? image = null)
     {
         if (_activeWindowLevel is not null)
@@ -393,6 +455,9 @@ public sealed class WorkspaceService
         return measurements;
     }
 
+    /// <summary>
+    /// 根据测量草稿生成仅用于界面显示的预览标注。
+    /// </summary>
     private MeasurementAnnotation? BuildPreviewMeasurement(ImageInstance image)
     {
         if (_measurementDraft is null || _measurementDraft.Points.Count == 0)
@@ -421,6 +486,9 @@ public sealed class WorkspaceService
         };
     }
 
+    /// <summary>
+    /// 按工具类型生成长度或角度标注文本。
+    /// </summary>
     private static MeasurementAnnotation CreateMeasurementAnnotation(
         ViewerToolMode toolMode,
         IReadOnlyList<Point2D> points,
@@ -437,6 +505,9 @@ public sealed class WorkspaceService
         return new MeasurementAnnotation(Guid.NewGuid(), label, points.ToArray(), isPreview);
     }
 
+    /// <summary>
+    /// 根据像素间距把两点距离换算为毫米。
+    /// </summary>
     private static double CalculateLength(Point2D start, Point2D end, PixelSpacing pixelSpacing)
     {
         var deltaX = (end.X - start.X) * pixelSpacing.Column;
@@ -444,6 +515,9 @@ public sealed class WorkspaceService
         return Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
     }
 
+    /// <summary>
+    /// 计算三点形成的夹角，顶点为中间点。
+    /// </summary>
     private static double CalculateAngle(Point2D first, Point2D vertex, Point2D third)
     {
         var vectorA = (X: first.X - vertex.X, Y: first.Y - vertex.Y);

@@ -7,8 +7,15 @@ using FellowOakDicom;
 
 namespace DicomViewer.Infrastructure.Data;
 
+/// <summary>
+/// 从文件系统读取 DICOM 元数据，并组装成 Patient -> Study -> Series -> Instance 的领域结构。
+/// 当未指定目录时，该服务会返回一套便于学习和演示的内置样例数据。
+/// </summary>
 public sealed class FileSystemStudyCatalogService : IStudyCatalogService
 {
+    /// <summary>
+    /// 加载指定目录中的 DICOM 文件元数据，或在未提供目录时返回样例工作区数据。
+    /// </summary>
     public async Task<StudyCatalogLoadResult> LoadAsync(string? sourcePath = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sourcePath))
@@ -71,6 +78,9 @@ public sealed class FileSystemStudyCatalogService : IStudyCatalogService
             false);
     }
 
+            /// <summary>
+            /// 尝试读取单个 DICOM 文件的关键元数据，并转换为后续分组所需的中间记录。
+            /// </summary>
     private static async Task<DicomRecord?> TryReadRecordAsync(string filePath, CancellationToken cancellationToken)
     {
         try
@@ -119,6 +129,9 @@ public sealed class FileSystemStudyCatalogService : IStudyCatalogService
         }
     }
 
+    /// <summary>
+    /// 将扁平的 DICOM 记录重新组织为领域层使用的患者、检查和序列层级。
+    /// </summary>
     private static IReadOnlyList<Patient> BuildPatients(IReadOnlyList<DicomRecord> records)
     {
         // 这里把扁平文件记录重新组装成 Patient -> Study -> Series -> Instance 的层级结构。
@@ -169,6 +182,9 @@ public sealed class FileSystemStudyCatalogService : IStudyCatalogService
             .ToList();
     }
 
+            /// <summary>
+            /// 构造一套无需真实 DICOM 文件即可演示查看流程的样例患者数据。
+            /// </summary>
     private static IReadOnlyList<Patient> BuildSamplePatients()
     {
         return new[]
@@ -196,6 +212,9 @@ public sealed class FileSystemStudyCatalogService : IStudyCatalogService
         };
     }
 
+    /// <summary>
+    /// 为样例患者构造一个完整序列，并自动生成连续的实例列表。
+    /// </summary>
     private static Series BuildSampleSeries(
         string seriesInstanceUid,
         string description,
@@ -272,6 +291,9 @@ public sealed class FileSystemStudyCatalogService : IStudyCatalogService
             : null;
     }
 
+    /// <summary>
+    /// 将 DICOM 标准模态代码映射到领域枚举，未知值统一回退为 Unknown。
+    /// </summary>
     private static ModalityType MapModality(string modality)
     {
         // 先覆盖当前项目会遇到的常见模态，未知值统一回退为 Unknown。

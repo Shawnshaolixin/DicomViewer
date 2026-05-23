@@ -5,8 +5,15 @@ using DicomViewer.Domain.ValueObjects;
 
 namespace DicomViewer.Infrastructure.Services;
 
+/// <summary>
+/// 提供默认的曝光联锁规则实现。
+/// 它将检查任务、设备状态、PACS 可用性和参数范围统一纳入校验。
+/// </summary>
 public sealed class DefaultInterlockService : IInterlockService
 {
+    /// <summary>
+    /// 根据当前输入条件收集所有联锁失败项，并返回最终结果。
+    /// </summary>
     public InterlockCheckResult Evaluate(
         ImagingOrder? order,
         ExposureParameters exposureParameters,
@@ -52,6 +59,9 @@ public sealed class DefaultInterlockService : IInterlockService
         return failures.Count == 0 ? InterlockCheckResult.Passed : InterlockCheckResult.Fail(failures.ToArray());
     }
 
+    /// <summary>
+    /// 判断曝光参数是否全部落在允许范围内，并包含必要的解剖部位与投照方向信息。
+    /// </summary>
     private static bool IsInRange(ExposureParameters exposureParameters, ExposureParameterRange parameterRange)
     {
         return exposureParameters.KilovoltagePeak >= parameterRange.MinKilovoltagePeak
