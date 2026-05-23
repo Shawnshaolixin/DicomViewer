@@ -51,6 +51,45 @@ public sealed class ExamWorkflowServiceTests
     }
 
     [Fact]
+    public async Task RunInterlockCheck_UsesConfiguredParameterRange()
+    {
+        var service = CreateService();
+
+        _ = await service.LoadWorklistAsync();
+        _ = service.SelectOrder("ORD-1");
+        _ = service.UpdateExposureParameterRange(ExposureParameterRange.Default with { MaxKilovoltagePeak = 60 });
+
+        var snapshot = service.RunInterlockCheck();
+
+        Assert.False(snapshot.CanExpose);
+        Assert.Contains("曝光参数越界。", snapshot.InterlockMessages);
+    }
+
+    [Fact]
+    public async Task ExecuteExposureAsync_PassesConfiguredOutputDirectory()
+    {
+        var outputDirectory = Directory.CreateTempSubdirectory();
+
+        try
+        {
+            var recordingExposureSimulationService = new RecordingExposureSimulationService();
+            var service = CreateService(recordingExposureSimulationService: recordingExposureSimulationService);
+
+            _ = await service.LoadWorklistAsync();
+            _ = service.SelectOrder("ORD-1");
+            _ = service.UpdatePacsConfiguration(PacsConfiguration.Default with { OutputDirectory = outputDirectory.FullName });
+
+            _ = await service.ExecuteExposureAsync();
+
+            Assert.Equal(outputDirectory.FullName, recordingExposureSimulationService.LastOutputDirectory);
+        }
+        finally
+        {
+            outputDirectory.Delete(true);
+        }
+    }
+
+    [Fact]
     public async Task ExecuteExposureAsync_WithValidSelection_CompletesSimulation()
     {
         var service = CreateService();
@@ -67,12 +106,12 @@ public sealed class ExamWorkflowServiceTests
         Assert.Contains("曝光执行完成", snapshot.AuditEntries.Last(), StringComparison.Ordinal);
     }
 
-    private static ExamWorkflowService CreateService()
+    private static ExamWorkflowService CreateService(IExposureSimulationService? recordingExposureSimulationService = null)
     {
         return new ExamWorkflowService(
             new FixedWorklistService(),
             new DefaultInterlockService(),
-            new FakeExposureSimulationService(),
+            recordingExposureSimulationService ?? new FakeExposureSimulationService(),
             new FakePacsStoreService(),
             new InMemoryAuditService());
     }
@@ -113,13 +152,28 @@ public sealed class ExamWorkflowServiceTests
 
     private sealed class FakeExposureSimulationService : IExposureSimulationService
     {
-        public Task<ExposureResult> RunAsync(ExamSession session, CancellationToken cancellationToken = default)
+        public Task<ExposureResult> RunAsync(ExamSession session, string outputDirectory, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new ExposureResult(
                 "SIM-1",
                 "模拟图像已生成",
-                "simulated-output\\SIM-1.dcm",
+                Path.Combine(outputDirectory, "SIM-1.dcm"),
                 new DateTime(2026, 5, 23, 1, 0, 0, DateTimeKind.Utc)));
+        }
+    }
+
+    private sealed class RecordingExposureSimulationService : IExposureSimulationService
+    {
+        public string? LastOutputDirectory { get; private set; }
+
+        public Task<ExposureResult> RunAsync(ExamSession session, string outputDirectory, CancellationToken cancellationToken = default)
+        {
+            LastOutputDirectory = outputDirectory;
+            return Task.FromResult(new ExposureResult(
+                "SIM-REC-1",
+                "模拟图像已生成",
+                Path.Combine(outputDirectory, "SIM-REC-1.dcm"),
+                new DateTime(2026, 5, 23, 1, 5, 0, DateTimeKind.Utc)));
         }
     }
 

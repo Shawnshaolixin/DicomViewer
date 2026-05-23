@@ -38,6 +38,16 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private string _exposureTimeMillisecondsText = ExposureParameters.Default.ExposureTimeMilliseconds.ToString("0.#");
     private string _milliampereSecondsText = ExposureParameters.Default.MilliampereSeconds.ToString("0.#");
     private string _sourceToImageDistanceText = ExposureParameters.Default.SourceToImageDistanceMillimeter.ToString("0.#");
+    private string _minKilovoltagePeakText = ExposureParameterRange.Default.MinKilovoltagePeak.ToString("0.#");
+    private string _maxKilovoltagePeakText = ExposureParameterRange.Default.MaxKilovoltagePeak.ToString("0.#");
+    private string _minTubeCurrentMilliampereText = ExposureParameterRange.Default.MinTubeCurrentMilliampere.ToString("0.#");
+    private string _maxTubeCurrentMilliampereText = ExposureParameterRange.Default.MaxTubeCurrentMilliampere.ToString("0.#");
+    private string _minExposureTimeMillisecondsText = ExposureParameterRange.Default.MinExposureTimeMilliseconds.ToString("0.#");
+    private string _maxExposureTimeMillisecondsText = ExposureParameterRange.Default.MaxExposureTimeMilliseconds.ToString("0.#");
+    private string _minMilliampereSecondsText = ExposureParameterRange.Default.MinMilliampereSeconds.ToString("0.#");
+    private string _maxMilliampereSecondsText = ExposureParameterRange.Default.MaxMilliampereSeconds.ToString("0.#");
+    private string _minSourceToImageDistanceText = ExposureParameterRange.Default.MinSourceToImageDistanceMillimeter.ToString("0.#");
+    private string _maxSourceToImageDistanceText = ExposureParameterRange.Default.MaxSourceToImageDistanceMillimeter.ToString("0.#");
     private string _bodyPartText = ExposureParameters.Default.BodyPart;
     private string _projectionText = ExposureParameters.Default.Projection;
     private bool _isAutomaticExposureControlEnabled = ExposureParameters.Default.IsAutomaticExposureControlEnabled;
@@ -58,6 +68,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         RunInterlockCheckCommand = new DelegateCommand(RunInterlockCheck);
         ExecuteExposureCommand = new DelegateCommand(async () => await ExecuteExposureAsync()).ObservesCanExecute(() => CanExecuteExposure);
         SendToPacsCommand = new DelegateCommand(async () => await SendToPacsAsync()).ObservesCanExecute(() => CanSendToPacs);
+        ReviewExposureCommand = new DelegateCommand(ReviewExposure).ObservesCanExecute(() => CanReviewExposure);
         VerifyPacsConnectionCommand = new DelegateCommand(async () => await VerifyPacsConnectionAsync());
         ApplyExposureParametersCommand = new DelegateCommand(ApplyExposureParameters);
         ApplyPacsConfigurationCommand = new DelegateCommand(ApplyPacsConfiguration);
@@ -76,6 +87,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     public bool CanExecuteExposure => SelectedWorklistItem is not null && InterlockMessages.Count == 0 && DeviceStateText == DeviceOperationalState.Ready.ToString();
 
     public bool CanSendToPacs => LastArtifactPathText != "-";
+
+    public bool CanReviewExposure => LastArtifactPathText != "-";
 
     public WorklistItem? SelectedWorklistItem
     {
@@ -236,6 +249,66 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         set => SetProperty(ref _sourceToImageDistanceText, value);
     }
 
+    public string MinKilovoltagePeakText
+    {
+        get => _minKilovoltagePeakText;
+        set => SetProperty(ref _minKilovoltagePeakText, value);
+    }
+
+    public string MaxKilovoltagePeakText
+    {
+        get => _maxKilovoltagePeakText;
+        set => SetProperty(ref _maxKilovoltagePeakText, value);
+    }
+
+    public string MinTubeCurrentMilliampereText
+    {
+        get => _minTubeCurrentMilliampereText;
+        set => SetProperty(ref _minTubeCurrentMilliampereText, value);
+    }
+
+    public string MaxTubeCurrentMilliampereText
+    {
+        get => _maxTubeCurrentMilliampereText;
+        set => SetProperty(ref _maxTubeCurrentMilliampereText, value);
+    }
+
+    public string MinExposureTimeMillisecondsText
+    {
+        get => _minExposureTimeMillisecondsText;
+        set => SetProperty(ref _minExposureTimeMillisecondsText, value);
+    }
+
+    public string MaxExposureTimeMillisecondsText
+    {
+        get => _maxExposureTimeMillisecondsText;
+        set => SetProperty(ref _maxExposureTimeMillisecondsText, value);
+    }
+
+    public string MinMilliampereSecondsText
+    {
+        get => _minMilliampereSecondsText;
+        set => SetProperty(ref _minMilliampereSecondsText, value);
+    }
+
+    public string MaxMilliampereSecondsText
+    {
+        get => _maxMilliampereSecondsText;
+        set => SetProperty(ref _maxMilliampereSecondsText, value);
+    }
+
+    public string MinSourceToImageDistanceText
+    {
+        get => _minSourceToImageDistanceText;
+        set => SetProperty(ref _minSourceToImageDistanceText, value);
+    }
+
+    public string MaxSourceToImageDistanceText
+    {
+        get => _maxSourceToImageDistanceText;
+        set => SetProperty(ref _maxSourceToImageDistanceText, value);
+    }
+
     public string BodyPartText
     {
         get => _bodyPartText;
@@ -285,6 +358,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     public DelegateCommand ExecuteExposureCommand { get; }
 
     public DelegateCommand SendToPacsCommand { get; }
+
+    public DelegateCommand ReviewExposureCommand { get; }
 
     public DelegateCommand VerifyPacsConnectionCommand { get; }
 
@@ -343,6 +418,16 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         ApplyConsoleSnapshot(await _examWorkflowService.VerifyPacsConnectionAsync());
     }
 
+    private void ReviewExposure()
+    {
+        if (string.IsNullOrWhiteSpace(LastArtifactPathText) || LastArtifactPathText == "-")
+        {
+            return;
+        }
+
+        NavigateToViewer(LastArtifactPathText);
+    }
+
     private void RunInterlockCheck()
     {
         ApplyExposureParameters();
@@ -352,7 +437,9 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private void ApplyExposureParameters()
     {
         var exposureParameters = BuildExposureParameters();
+        var exposureParameterRange = BuildExposureParameterRange();
         ApplyConsoleSnapshot(_examWorkflowService.SetOperationalFlags(DetectorConnected, TubeWarmedUp, DoorClosed, PacsAvailable));
+        ApplyConsoleSnapshot(_examWorkflowService.UpdateExposureParameterRange(exposureParameterRange));
         ApplyConsoleSnapshot(_examWorkflowService.UpdateExposureParameters(exposureParameters));
     }
 
@@ -372,6 +459,32 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             string.IsNullOrWhiteSpace(BodyPartText) ? ExposureParameters.Default.BodyPart : BodyPartText.Trim().ToUpperInvariant(),
             string.IsNullOrWhiteSpace(ProjectionText) ? ExposureParameters.Default.Projection : ProjectionText.Trim().ToUpperInvariant(),
             IsAutomaticExposureControlEnabled);
+    }
+
+    private ExposureParameterRange BuildExposureParameterRange()
+    {
+        var minKilovoltagePeak = ParseDoubleOrFallback(MinKilovoltagePeakText, ExposureParameterRange.Default.MinKilovoltagePeak);
+        var maxKilovoltagePeak = ParseDoubleOrFallback(MaxKilovoltagePeakText, ExposureParameterRange.Default.MaxKilovoltagePeak);
+        var minTubeCurrentMilliampere = ParseDoubleOrFallback(MinTubeCurrentMilliampereText, ExposureParameterRange.Default.MinTubeCurrentMilliampere);
+        var maxTubeCurrentMilliampere = ParseDoubleOrFallback(MaxTubeCurrentMilliampereText, ExposureParameterRange.Default.MaxTubeCurrentMilliampere);
+        var minExposureTimeMilliseconds = ParseDoubleOrFallback(MinExposureTimeMillisecondsText, ExposureParameterRange.Default.MinExposureTimeMilliseconds);
+        var maxExposureTimeMilliseconds = ParseDoubleOrFallback(MaxExposureTimeMillisecondsText, ExposureParameterRange.Default.MaxExposureTimeMilliseconds);
+        var minMilliampereSeconds = ParseDoubleOrFallback(MinMilliampereSecondsText, ExposureParameterRange.Default.MinMilliampereSeconds);
+        var maxMilliampereSeconds = ParseDoubleOrFallback(MaxMilliampereSecondsText, ExposureParameterRange.Default.MaxMilliampereSeconds);
+        var minSourceToImageDistance = ParseDoubleOrFallback(MinSourceToImageDistanceText, ExposureParameterRange.Default.MinSourceToImageDistanceMillimeter);
+        var maxSourceToImageDistance = ParseDoubleOrFallback(MaxSourceToImageDistanceText, ExposureParameterRange.Default.MaxSourceToImageDistanceMillimeter);
+
+        return new ExposureParameterRange(
+            Math.Min(minKilovoltagePeak, maxKilovoltagePeak),
+            Math.Max(minKilovoltagePeak, maxKilovoltagePeak),
+            Math.Min(minTubeCurrentMilliampere, maxTubeCurrentMilliampere),
+            Math.Max(minTubeCurrentMilliampere, maxTubeCurrentMilliampere),
+            Math.Min(minExposureTimeMilliseconds, maxExposureTimeMilliseconds),
+            Math.Max(minExposureTimeMilliseconds, maxExposureTimeMilliseconds),
+            Math.Min(minMilliampereSeconds, maxMilliampereSeconds),
+            Math.Max(minMilliampereSeconds, maxMilliampereSeconds),
+            Math.Min(minSourceToImageDistance, maxSourceToImageDistance),
+            Math.Max(minSourceToImageDistance, maxSourceToImageDistance));
     }
 
     private PacsConfiguration BuildPacsConfiguration()
@@ -420,6 +533,16 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         ExposureTimeMillisecondsText = snapshot.ExposureParameters.ExposureTimeMilliseconds.ToString("0.#");
         MilliampereSecondsText = snapshot.ExposureParameters.MilliampereSeconds.ToString("0.#");
         SourceToImageDistanceText = snapshot.ExposureParameters.SourceToImageDistanceMillimeter.ToString("0.#");
+        MinKilovoltagePeakText = snapshot.ExposureParameterRange.MinKilovoltagePeak.ToString("0.#");
+        MaxKilovoltagePeakText = snapshot.ExposureParameterRange.MaxKilovoltagePeak.ToString("0.#");
+        MinTubeCurrentMilliampereText = snapshot.ExposureParameterRange.MinTubeCurrentMilliampere.ToString("0.#");
+        MaxTubeCurrentMilliampereText = snapshot.ExposureParameterRange.MaxTubeCurrentMilliampere.ToString("0.#");
+        MinExposureTimeMillisecondsText = snapshot.ExposureParameterRange.MinExposureTimeMilliseconds.ToString("0.#");
+        MaxExposureTimeMillisecondsText = snapshot.ExposureParameterRange.MaxExposureTimeMilliseconds.ToString("0.#");
+        MinMilliampereSecondsText = snapshot.ExposureParameterRange.MinMilliampereSeconds.ToString("0.#");
+        MaxMilliampereSecondsText = snapshot.ExposureParameterRange.MaxMilliampereSeconds.ToString("0.#");
+        MinSourceToImageDistanceText = snapshot.ExposureParameterRange.MinSourceToImageDistanceMillimeter.ToString("0.#");
+        MaxSourceToImageDistanceText = snapshot.ExposureParameterRange.MaxSourceToImageDistanceMillimeter.ToString("0.#");
         BodyPartText = snapshot.ExposureParameters.BodyPart;
         ProjectionText = snapshot.ExposureParameters.Projection;
         IsAutomaticExposureControlEnabled = snapshot.ExposureParameters.IsAutomaticExposureControlEnabled;
@@ -441,6 +564,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         _isApplyingConsoleSnapshot = false;
         RaisePropertyChanged(nameof(CanExecuteExposure));
         RaisePropertyChanged(nameof(CanSendToPacs));
+        RaisePropertyChanged(nameof(CanReviewExposure));
     }
 
     private static double ParseDoubleOrFallback(string text, double fallback)

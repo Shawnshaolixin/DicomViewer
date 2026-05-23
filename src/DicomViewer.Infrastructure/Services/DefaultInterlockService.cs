@@ -10,6 +10,7 @@ public sealed class DefaultInterlockService : IInterlockService
     public InterlockCheckResult Evaluate(
         ImagingOrder? order,
         ExposureParameters exposureParameters,
+        ExposureParameterRange parameterRange,
         DeviceOperationalState deviceState,
         bool detectorConnected,
         bool tubeWarmedUp,
@@ -43,7 +44,7 @@ public sealed class DefaultInterlockService : IInterlockService
             failures.Add((InterlockCode.PacsUnavailable, "PACS 服务不可用。"));
         }
 
-        if (!IsInRange(exposureParameters))
+        if (!IsInRange(exposureParameters, parameterRange))
         {
             failures.Add((InterlockCode.ParameterOutOfRange, "曝光参数越界。"));
         }
@@ -51,13 +52,18 @@ public sealed class DefaultInterlockService : IInterlockService
         return failures.Count == 0 ? InterlockCheckResult.Passed : InterlockCheckResult.Fail(failures.ToArray());
     }
 
-    private static bool IsInRange(ExposureParameters exposureParameters)
+    private static bool IsInRange(ExposureParameters exposureParameters, ExposureParameterRange parameterRange)
     {
-        return exposureParameters.KilovoltagePeak is >= 40 and <= 150
-            && exposureParameters.TubeCurrentMilliampere is >= 10 and <= 500
-            && exposureParameters.ExposureTimeMilliseconds is >= 1 and <= 1000
-            && exposureParameters.MilliampereSeconds is >= 0.1 and <= 500
-            && exposureParameters.SourceToImageDistanceMillimeter is >= 500 and <= 2000
+        return exposureParameters.KilovoltagePeak >= parameterRange.MinKilovoltagePeak
+            && exposureParameters.KilovoltagePeak <= parameterRange.MaxKilovoltagePeak
+            && exposureParameters.TubeCurrentMilliampere >= parameterRange.MinTubeCurrentMilliampere
+            && exposureParameters.TubeCurrentMilliampere <= parameterRange.MaxTubeCurrentMilliampere
+            && exposureParameters.ExposureTimeMilliseconds >= parameterRange.MinExposureTimeMilliseconds
+            && exposureParameters.ExposureTimeMilliseconds <= parameterRange.MaxExposureTimeMilliseconds
+            && exposureParameters.MilliampereSeconds >= parameterRange.MinMilliampereSeconds
+            && exposureParameters.MilliampereSeconds <= parameterRange.MaxMilliampereSeconds
+            && exposureParameters.SourceToImageDistanceMillimeter >= parameterRange.MinSourceToImageDistanceMillimeter
+            && exposureParameters.SourceToImageDistanceMillimeter <= parameterRange.MaxSourceToImageDistanceMillimeter
             && !string.IsNullOrWhiteSpace(exposureParameters.BodyPart)
             && !string.IsNullOrWhiteSpace(exposureParameters.Projection);
     }

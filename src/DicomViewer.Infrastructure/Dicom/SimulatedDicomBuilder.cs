@@ -12,11 +12,11 @@ public sealed class SimulatedDicomBuilder
     private const double DefaultWindowWidth = 255.0;
     private const double DefaultWindowCenter = 127.5;
 
-    private readonly string _outputDirectory;
+    private readonly string _defaultOutputDirectory;
 
     public SimulatedDicomBuilder(string? outputDirectory = null)
     {
-        _outputDirectory = string.IsNullOrWhiteSpace(outputDirectory)
+        _defaultOutputDirectory = string.IsNullOrWhiteSpace(outputDirectory)
             ? Path.Combine(AppContext.BaseDirectory, "simulated-output")
             : outputDirectory;
     }
@@ -25,12 +25,17 @@ public sealed class SimulatedDicomBuilder
         ExamSession session,
         string imageId,
         DateTime acquiredAtUtc,
+        string? outputDirectory = null,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        Directory.CreateDirectory(_outputDirectory);
-        var filePath = Path.Combine(_outputDirectory, $"{imageId}.dcm");
+        var targetOutputDirectory = string.IsNullOrWhiteSpace(outputDirectory)
+            ? _defaultOutputDirectory
+            : outputDirectory;
+
+        Directory.CreateDirectory(targetOutputDirectory);
+        var filePath = Path.Combine(targetOutputDirectory, $"{imageId}.dcm");
         var localAcquiredTime = acquiredAtUtc.ToLocalTime();
         var dataset = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
         {

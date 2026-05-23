@@ -9,6 +9,7 @@ public interface IInterlockService
     InterlockCheckResult Evaluate(
         ImagingOrder? order,
         ExposureParameters exposureParameters,
+    ExposureParameterRange parameterRange,
         DeviceOperationalState deviceState,
         bool detectorConnected,
         bool tubeWarmedUp,

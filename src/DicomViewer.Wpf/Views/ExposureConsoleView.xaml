@@ -59,6 +59,7 @@
                         <Button Content="加载工作列表" Command="{Binding LoadWorklistCommand}" />
                         <Button Content="联锁检查" Command="{Binding RunInterlockCheckCommand}" />
                         <Button Content="执行曝光" Command="{Binding ExecuteExposureCommand}" />
+                        <Button Content="回看结果" Command="{Binding ReviewExposureCommand}" />
                         <Button Content="验证连接" Command="{Binding VerifyPacsConnectionCommand}" />
                         <Button Content="发送 PACS" Command="{Binding SendToPacsCommand}" />
                     </StackPanel>
@@ -175,7 +176,58 @@
                         <TextBlock Text="BodyPart" Foreground="#9FB0BC" />
                         <TextBox Text="{Binding BodyPartText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
                         <CheckBox Content="AEC 开启" IsChecked="{Binding IsAutomaticExposureControlEnabled}" Margin="0,10,0,0" />
-                        <Button Content="应用参数" Command="{Binding ApplyExposureParametersCommand}" Margin="0,12,0,0" />
+                        <TextBlock Text="参数范围" FontSize="16" FontWeight="SemiBold" Margin="0,16,0,0" />
+                        <UniformGrid Columns="2" Margin="0,12,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="kV 最小值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MinKilovoltagePeakText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="kV 最大值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MaxKilovoltagePeakText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="mA 最小值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MinTubeCurrentMilliampereText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="mA 最大值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MaxTubeCurrentMilliampereText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="ms 最小值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MinExposureTimeMillisecondsText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="ms 最大值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MaxExposureTimeMillisecondsText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="mAs 最小值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MinMilliampereSecondsText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="mAs 最大值" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MaxMilliampereSecondsText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="SID 最小值(mm)" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MinSourceToImageDistanceText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="SID 最大值(mm)" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding MaxSourceToImageDistanceText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <Button Content="应用参数和范围" Command="{Binding ApplyExposureParametersCommand}" Margin="0,12,0,0" />
                     </StackPanel>
                 </Border>
 

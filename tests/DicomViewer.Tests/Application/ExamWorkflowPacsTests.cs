@@ -88,12 +88,12 @@ public sealed class ExamWorkflowPacsTests
 
     private sealed class FakeExposureSimulationService : IExposureSimulationService
     {
-        public Task<ExposureResult> RunAsync(ExamSession session, CancellationToken cancellationToken = default)
+        public Task<ExposureResult> RunAsync(ExamSession session, string outputDirectory, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new ExposureResult(
                 "SIM-1",
                 "模拟图像已生成",
-                "simulated-output\\SIM-1.dcm",
+                Path.Combine(outputDirectory, "SIM-1.dcm"),
                 new DateTime(2026, 5, 23, 1, 0, 0, DateTimeKind.Utc)));
         }
     }

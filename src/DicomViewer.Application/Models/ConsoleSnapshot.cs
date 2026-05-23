@@ -7,6 +7,7 @@ public sealed record ConsoleSnapshot(
     IReadOnlyList<WorklistItem> WorklistItems,
     string? SelectedOrderId,
     ExposureParameters ExposureParameters,
+    ExposureParameterRange ExposureParameterRange,
     PacsConfiguration PacsConfiguration,
     DeviceOperationalState DeviceState,
     ExamWorkflowStatus? WorkflowStatus,

@@ -37,7 +37,7 @@ public sealed class MockExposureSimulationServiceTests
 
         try
         {
-            var result = await service.RunAsync(session);
+            var result = await service.RunAsync(session, outputDirectory.FullName);
 
             Assert.True(File.Exists(result.ArtifactPath));
             Assert.Contains("封装为 DICOM", result.PreviewText, StringComparison.Ordinal);

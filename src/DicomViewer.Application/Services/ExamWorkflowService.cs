@@ -18,6 +18,7 @@ public sealed class ExamWorkflowService
     private ImagingOrder? _selectedOrder;
     private ExamSession? _session;
     private ExposureParameters _exposureParameters = ExposureParameters.Default;
+    private ExposureParameterRange _exposureParameterRange = ExposureParameterRange.Default;
     private InterlockCheckResult _lastInterlockResult = InterlockCheckResult.Fail((InterlockCode.NoActiveOrder, "未选择检查任务。"));
     private ExposureResult? _lastExposureResult;
     private PacsStoreResult? _lastPacsStoreResult;
@@ -118,6 +119,15 @@ public sealed class ExamWorkflowService
         return BuildSnapshot();
     }
 
+    public ConsoleSnapshot UpdateExposureParameterRange(ExposureParameterRange exposureParameterRange)
+    {
+        _exposureParameterRange = exposureParameterRange;
+        _statusText = "参数范围已更新";
+        _notesText = $"kV={exposureParameterRange.MinKilovoltagePeak:0.#}-{exposureParameterRange.MaxKilovoltagePeak:0.#}, mA={exposureParameterRange.MinTubeCurrentMilliampere:0.#}-{exposureParameterRange.MaxTubeCurrentMilliampere:0.#}";
+        _auditService.Record("修改参数范围");
+        return BuildSnapshot();
+    }
+
     public ConsoleSnapshot SetOperationalFlags(bool detectorConnected, bool tubeWarmedUp, bool doorClosed, bool pacsAvailable)
     {
         DetectorConnected = detectorConnected;
@@ -136,6 +146,7 @@ public sealed class ExamWorkflowService
         _lastInterlockResult = _interlockService.Evaluate(
             _selectedOrder,
             _exposureParameters,
+            _exposureParameterRange,
             deviceState,
             DetectorConnected,
             TubeWarmedUp,
@@ -202,7 +213,7 @@ public sealed class ExamWorkflowService
             WorkflowStatus = ExamWorkflowStatus.Processing,
         };
 
-        _lastExposureResult = await _exposureSimulationService.RunAsync(_session, cancellationToken);
+        _lastExposureResult = await _exposureSimulationService.RunAsync(_session, _pacsConfiguration.OutputDirectory, cancellationToken);
         _auditService.Record($"DICOM 生成: {_lastExposureResult.ArtifactPath}");
 
         _session = _session with
@@ -297,6 +308,7 @@ public sealed class ExamWorkflowService
             worklistItems,
             _selectedOrder?.OrderId,
             _exposureParameters,
+            _exposureParameterRange,
             _pacsConfiguration,
             _session?.DeviceState ?? DeviceOperationalState.Idle,
             _session?.WorkflowStatus,
