@@ -207,6 +207,16 @@ public sealed class ExamWorkflowServiceTests
                 dicomFilePath,
                 DateTime.UtcNow));
         }
+
+        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsStudyQueryResult(true, "PACS 查询成功", "测试替身未执行真实查询。", Array.Empty<PacsRemoteStudy>(), DateTime.UtcNow));
+        }
+
+        public Task<PacsRetrieveResult> RetrieveStudyAsync(string remoteStudyId, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsRetrieveResult(true, "PACS 回取成功", "测试替身未执行真实回取。", targetDirectory, DateTime.UtcNow));
+        }
     }
 
     private sealed class InMemoryConsoleConfigurationStore : IConsoleConfigurationStore
@@ -236,6 +246,14 @@ public sealed class ExamWorkflowServiceTests
         public ExamSessionRecord? GetBySessionId(string sessionId)
         {
             return _sessions.TryGetValue(sessionId, out var session) ? session : null;
+        }
+
+        public IReadOnlyList<ExamSessionRecord> GetRecent(int limit)
+        {
+            return _sessions.Values
+                .OrderByDescending(session => session.UpdatedAtUtc)
+                .Take(limit)
+                .ToArray();
         }
     }
 

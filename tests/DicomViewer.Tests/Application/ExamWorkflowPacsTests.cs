@@ -53,6 +53,29 @@ public sealed class ExamWorkflowPacsTests
         Assert.Equal("PACS 连通性验证成功", snapshot.StatusText);
     }
 
+    [Fact]
+    public async Task QueryPacsStudiesAsync_LoadsRemoteStudiesIntoSnapshot()
+    {
+        var service = CreateService(new SuccessfulPacsStoreService());
+
+        var snapshot = await service.QueryPacsStudiesAsync();
+
+        Assert.Equal("PACS 查询成功", snapshot.StatusText);
+        Assert.Single(snapshot.RemoteStudies);
+        Assert.Equal("REMOTE-1", snapshot.RemoteStudies[0].RemoteStudyId);
+    }
+
+    [Fact]
+    public async Task RetrievePacsStudyAsync_ReturnsImportedDirectoryPath()
+    {
+        var service = CreateService(new SuccessfulPacsStoreService());
+
+        var result = await service.RetrievePacsStudyAsync("REMOTE-1");
+
+        Assert.Equal("PACS 回取成功", result.Snapshot.StatusText);
+        Assert.EndsWith(Path.Combine("retrieved", "REMOTE-1"), result.ImportedDirectoryPath);
+    }
+
     private static ExamWorkflowService CreateService(IPacsStoreService pacsStoreService)
     {
         return new ExamWorkflowService(
@@ -128,6 +151,21 @@ public sealed class ExamWorkflowPacsTests
                 dicomFilePath,
                 DateTime.UtcNow));
         }
+
+        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<PacsRemoteStudy> studies =
+            [
+                new PacsRemoteStudy("REMOTE-1", "1.2.3", "P-1", "Demo Patient", "Chest PA", "DX", 1, new DateTime(2026, 5, 23, 0, 0, 0, DateTimeKind.Utc)),
+            ];
+
+            return Task.FromResult(new PacsStudyQueryResult(true, "PACS 查询成功", "共查询到 1 条远端检查。", studies, DateTime.UtcNow));
+        }
+
+        public Task<PacsRetrieveResult> RetrieveStudyAsync(string remoteStudyId, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsRetrieveResult(true, "PACS 回取成功", $"已下载到 {targetDirectory}", targetDirectory, DateTime.UtcNow));
+        }
     }
 
     private sealed class InMemoryConsoleConfigurationStore : IConsoleConfigurationStore
@@ -154,6 +192,11 @@ public sealed class ExamWorkflowPacsTests
         public ExamSessionRecord? GetBySessionId(string sessionId)
         {
             return null;
+        }
+
+        public IReadOnlyList<ExamSessionRecord> GetRecent(int limit)
+        {
+            return Array.Empty<ExamSessionRecord>();
         }
     }
 

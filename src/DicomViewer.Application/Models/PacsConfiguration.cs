@@ -5,6 +5,7 @@ public sealed record PacsConfiguration(
     string CalledAeTitle,
     string Host,
     int Port,
+    int RestApiPort,
     string OutputDirectory)
 {
     public static PacsConfiguration Default { get; } = new(
@@ -12,5 +13,6 @@ public sealed record PacsConfiguration(
         "ORTHANC",
         "127.0.0.1",
         4242,
+        8042,
         Path.Combine(AppContext.BaseDirectory, "simulated-output"));
 }

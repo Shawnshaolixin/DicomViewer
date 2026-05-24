@@ -20,6 +20,7 @@ public sealed class ExamWorkflowService
     private readonly IConsoleConfigurationStore _consoleConfigurationStore;
     private readonly IExamSessionStore _examSessionStore;
     private readonly IPacsSendRecordStore _pacsSendRecordStore;
+    private const int HistoryItemLimit = 12;
 
     private IReadOnlyList<ImagingOrder> _orders = Array.Empty<ImagingOrder>();
     private ImagingOrder? _selectedOrder;
@@ -29,6 +30,7 @@ public sealed class ExamWorkflowService
     private InterlockCheckResult _lastInterlockResult = InterlockCheckResult.Fail((InterlockCode.NoActiveOrder, "未选择检查任务。"));
     private ExposureResult? _lastExposureResult;
     private PacsStoreResult? _lastPacsStoreResult;
+    private IReadOnlyList<PacsRemoteStudy> _remoteStudies = Array.Empty<PacsRemoteStudy>();
     private PacsConfiguration _pacsConfiguration = PacsConfiguration.Default;
     private string _statusText = "控制台尚未初始化";
     private string _notesText = "请先加载工作列表。";
@@ -146,7 +148,7 @@ public sealed class ExamWorkflowService
         _pacsConfiguration = pacsConfiguration;
         SaveConfiguration();
         _statusText = "PACS 配置已更新";
-        _notesText = $"{pacsConfiguration.CallingAeTitle} -> {pacsConfiguration.CalledAeTitle} @ {pacsConfiguration.Host}:{pacsConfiguration.Port}";
+        _notesText = $"DICOM {pacsConfiguration.Host}:{pacsConfiguration.Port} / REST {pacsConfiguration.Host}:{pacsConfiguration.RestApiPort}";
         _auditService.Record("修改 PACS 配置");
         return BuildSnapshot();
     }
@@ -375,6 +377,48 @@ public sealed class ExamWorkflowService
     }
 
     /// <summary>
+    /// 查询 Orthanc 中最近的检查列表。
+    /// </summary>
+    public async Task<ConsoleSnapshot> QueryPacsStudiesAsync(CancellationToken cancellationToken = default)
+    {
+        _statusText = "正在查询 PACS 检查";
+        _notesText = $"使用 Orthanc REST 查询 {_pacsConfiguration.Host}:{_pacsConfiguration.RestApiPort}";
+        _auditService.Record("PACS 查询开始");
+
+        var queryResult = await _pacsStoreService.QueryStudiesAsync(_pacsConfiguration, cancellationToken);
+        _remoteStudies = queryResult.Studies;
+        _statusText = queryResult.StatusText;
+        _notesText = queryResult.Details;
+        _auditService.Record($"PACS 查询{(queryResult.IsSuccess ? "成功" : "失败")}: {queryResult.Details}");
+        return BuildSnapshot();
+    }
+
+    /// <summary>
+    /// 将指定远端检查回取到本地目录。
+    /// </summary>
+    public async Task<(ConsoleSnapshot Snapshot, string? ImportedDirectoryPath)> RetrievePacsStudyAsync(string remoteStudyId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(remoteStudyId))
+        {
+            _statusText = "PACS 回取失败";
+            _notesText = "未选择可回取的远端检查。";
+            _auditService.Record("PACS 回取失败: 未选择远端检查");
+            return (BuildSnapshot(), null);
+        }
+
+        var targetDirectory = Path.Combine(_pacsConfiguration.OutputDirectory, "retrieved", remoteStudyId);
+        _statusText = "正在回取 PACS 检查";
+        _notesText = $"保存到 {targetDirectory}";
+        _auditService.Record($"PACS 回取开始: {remoteStudyId}");
+
+        var retrieveResult = await _pacsStoreService.RetrieveStudyAsync(remoteStudyId, targetDirectory, _pacsConfiguration, cancellationToken);
+        _statusText = retrieveResult.StatusText;
+        _notesText = retrieveResult.Details;
+        _auditService.Record($"PACS 回取{(retrieveResult.IsSuccess ? "成功" : "失败")}: {retrieveResult.Details}");
+        return (BuildSnapshot(), retrieveResult.IsSuccess ? retrieveResult.ImportedDirectoryPath : null);
+    }
+
+    /// <summary>
     /// 把当前工作列表、设备状态、联锁结果和审计记录汇总为控制台快照。
     /// </summary>
     private ConsoleSnapshot BuildSnapshot()
@@ -389,6 +433,20 @@ public sealed class ExamWorkflowService
             order.ScheduledTime,
             order.Status)).ToArray();
 
+        var historyItems = _examSessionStore
+            .GetRecent(HistoryItemLimit)
+            .Select(session => new ExamHistoryItem(
+                session.SessionId,
+                session.PatientName,
+                session.ProcedureDescription,
+                session.BodyPart,
+                session.Projection,
+                session.WorkflowStatus,
+                session.DeviceState,
+                session.UpdatedAtUtc,
+                session.LastGeneratedArtifactPath))
+            .ToArray();
+
         var currentPatientText = _selectedOrder is null
             ? "未选择患者"
             : $"{_selectedOrder.PatientName} ({_selectedOrder.PatientId})";
@@ -399,6 +457,8 @@ public sealed class ExamWorkflowService
 
         return new ConsoleSnapshot(
             worklistItems,
+            historyItems,
+            _remoteStudies,
             _selectedOrder?.OrderId,
             _exposureParameters,
             _exposureParameterRange,

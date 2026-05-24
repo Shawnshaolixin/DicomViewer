@@ -63,6 +63,21 @@ public sealed class ExamWorkflowResultPersistenceTests
         Assert.Equal("PACS 发送成功", sendRecords[0].StatusText);
     }
 
+    [Fact]
+    public async Task ExecuteExposureAsync_IncludesPersistedSessionInHistory()
+    {
+        var examSessionStore = new InMemoryExamSessionStore();
+        var service = CreateService(examSessionStore, new InMemoryPacsSendRecordStore());
+
+        _ = await service.LoadWorklistAsync();
+        _ = service.SelectOrder("ORD-1");
+        var snapshot = await service.ExecuteExposureAsync();
+
+        Assert.NotEmpty(snapshot.HistoryItems);
+        Assert.Equal("Demo Patient", snapshot.HistoryItems[0].PatientName);
+        Assert.Equal(snapshot.LastExposureResult!.ArtifactPath, snapshot.HistoryItems[0].ArtifactPath);
+    }
+
     private static ExamWorkflowService CreateService(InMemoryExamSessionStore examSessionStore, InMemoryPacsSendRecordStore pacsSendRecordStore)
     {
         return new ExamWorkflowService(
@@ -122,6 +137,16 @@ public sealed class ExamWorkflowResultPersistenceTests
         {
             return Task.FromResult(new PacsStoreResult(true, "PACS 发送成功", "Orthanc 已确认接收。", configuration.CalledAeTitle, configuration.Host, configuration.Port, dicomFilePath, DateTime.UtcNow));
         }
+
+        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsStudyQueryResult(true, "ok", "ok", Array.Empty<PacsRemoteStudy>(), DateTime.UtcNow));
+        }
+
+        public Task<PacsRetrieveResult> RetrieveStudyAsync(string remoteStudyId, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsRetrieveResult(true, "ok", "ok", targetDirectory, DateTime.UtcNow));
+        }
     }
 
     private sealed class InMemoryConsoleConfigurationStore : IConsoleConfigurationStore
@@ -148,6 +173,14 @@ public sealed class ExamWorkflowResultPersistenceTests
         public ExamSessionRecord? GetBySessionId(string sessionId)
         {
             return _sessions.TryGetValue(sessionId, out var session) ? session : null;
+        }
+
+        public IReadOnlyList<ExamSessionRecord> GetRecent(int limit)
+        {
+            return _sessions.Values
+                .OrderByDescending(session => session.UpdatedAtUtc)
+                .Take(limit)
+                .ToArray();
         }
     }
 

@@ -2,6 +2,8 @@ using DicomViewer.Application.Abstractions;
 using DicomViewer.Application.Models;
 using FellowOakDicom.Network;
 using FellowOakDicom.Network.Client;
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 
 namespace DicomViewer.Infrastructure.Pacs;
 
@@ -11,6 +13,8 @@ namespace DicomViewer.Infrastructure.Pacs;
 /// </summary>
 public sealed class OrthancStoreService : IPacsStoreService
 {
+    private const int QueryLimit = 20;
+
     /// <summary>
     /// 发送 C-ECHO 请求，验证远端 PACS AE 是否可达。
     /// </summary>
@@ -136,5 +140,183 @@ public sealed class OrthancStoreService : IPacsStoreService
                 dicomFilePath,
                 DateTime.UtcNow);
         }
+    }
+
+    public async Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var httpClient = CreateOrthancHttpClient(configuration);
+            using var response = await httpClient.PostAsJsonAsync(
+                "tools/find",
+                new OrthancFindRequest(
+                    "Study",
+                    QueryLimit,
+                    true,
+                    new Dictionary<string, string>(),
+                    [
+                        "StudyDate",
+                        "StudyInstanceUID",
+                        "StudyDescription",
+                        "ModalitiesInStudy",
+                        "PatientID",
+                        "PatientName",
+                        "NumberOfStudyRelatedInstances",
+                    ]),
+                cancellationToken);
+
+            response.EnsureSuccessStatusCode();
+
+            var studies = await response.Content.ReadFromJsonAsync<IReadOnlyList<OrthancStudySearchResponse>>(cancellationToken: cancellationToken)
+                ?? Array.Empty<OrthancStudySearchResponse>();
+
+            var result = studies
+                .Select(MapStudy)
+                .OrderByDescending(study => study.StudyDateUtc)
+                .ToArray();
+
+            return new PacsStudyQueryResult(
+                true,
+                "PACS 查询成功",
+                result.Length == 0 ? "Orthanc 中暂无可回取检查。" : $"共查询到 {result.Length} 条远端检查。",
+                result,
+                DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new PacsStudyQueryResult(
+                false,
+                "PACS 查询失败",
+                ex.Message,
+                Array.Empty<PacsRemoteStudy>(),
+                DateTime.UtcNow);
+        }
+    }
+
+    public async Task<PacsRetrieveResult> RetrieveStudyAsync(string remoteStudyId, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(remoteStudyId))
+        {
+            return new PacsRetrieveResult(false, "PACS 回取失败", "远端检查标识为空。", string.Empty, DateTime.UtcNow);
+        }
+
+        try
+        {
+            using var httpClient = CreateOrthancHttpClient(configuration);
+            using var studyResponse = await httpClient.GetAsync($"studies/{Uri.EscapeDataString(remoteStudyId)}", cancellationToken);
+            studyResponse.EnsureSuccessStatusCode();
+
+            var study = await studyResponse.Content.ReadFromJsonAsync<OrthancStudyDetailResponse>(cancellationToken: cancellationToken);
+            var instances = study?.Instances ?? [];
+
+            if (instances.Count == 0)
+            {
+                return new PacsRetrieveResult(false, "PACS 回取失败", "远端检查中未找到实例。", string.Empty, DateTime.UtcNow);
+            }
+
+            Directory.CreateDirectory(targetDirectory);
+            foreach (var instanceId in instances)
+            {
+                using var instanceResponse = await httpClient.GetAsync($"instances/{Uri.EscapeDataString(instanceId)}/file", cancellationToken);
+                instanceResponse.EnsureSuccessStatusCode();
+
+                var filePath = Path.Combine(targetDirectory, $"{instanceId}.dcm");
+                await using var fileStream = File.Create(filePath);
+                await instanceResponse.Content.CopyToAsync(fileStream, cancellationToken);
+            }
+
+            return new PacsRetrieveResult(
+                true,
+                "PACS 回取成功",
+                $"已下载 {instances.Count} 个实例到 {targetDirectory}",
+                targetDirectory,
+                DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new PacsRetrieveResult(false, "PACS 回取失败", ex.Message, string.Empty, DateTime.UtcNow);
+        }
+    }
+
+    private static HttpClient CreateOrthancHttpClient(PacsConfiguration configuration)
+    {
+        return new HttpClient
+        {
+            BaseAddress = BuildOrthancBaseUri(configuration),
+        };
+    }
+
+    private static Uri BuildOrthancBaseUri(PacsConfiguration configuration)
+    {
+        if (Uri.TryCreate(configuration.Host, UriKind.Absolute, out var absoluteUri))
+        {
+            var builder = new UriBuilder(absoluteUri)
+            {
+                Port = configuration.RestApiPort,
+            };
+
+            return builder.Uri;
+        }
+
+        return new UriBuilder(Uri.UriSchemeHttp, configuration.Host, configuration.RestApiPort).Uri;
+    }
+
+    private static PacsRemoteStudy MapStudy(OrthancStudySearchResponse response)
+    {
+        var requestedTags = response.RequestedTags ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        requestedTags.TryGetValue("StudyInstanceUID", out var studyInstanceUid);
+        requestedTags.TryGetValue("PatientID", out var patientId);
+        requestedTags.TryGetValue("PatientName", out var patientName);
+        requestedTags.TryGetValue("StudyDescription", out var studyDescription);
+        requestedTags.TryGetValue("ModalitiesInStudy", out var modalitiesInStudy);
+        requestedTags.TryGetValue("NumberOfStudyRelatedInstances", out var relatedInstances);
+        requestedTags.TryGetValue("StudyDate", out var studyDateText);
+
+        return new PacsRemoteStudy(
+            response.Id,
+            studyInstanceUid ?? string.Empty,
+            patientId ?? string.Empty,
+            patientName ?? string.Empty,
+            string.IsNullOrWhiteSpace(studyDescription) ? "未命名检查" : studyDescription,
+            string.IsNullOrWhiteSpace(modalitiesInStudy) ? "OT" : modalitiesInStudy,
+            int.TryParse(relatedInstances, out var instanceCount) ? instanceCount : 0,
+            ParseStudyDate(studyDateText));
+    }
+
+    private static DateTime? ParseStudyDate(string? studyDateText)
+    {
+        if (string.IsNullOrWhiteSpace(studyDateText) || studyDateText.Length != 8)
+        {
+            return null;
+        }
+
+        return DateTime.TryParseExact(
+            studyDateText,
+            "yyyyMMdd",
+            null,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private sealed record OrthancFindRequest(
+        string Level,
+        int Limit,
+        bool Expand,
+        Dictionary<string, string> Query,
+        string[] RequestedTags);
+
+    private sealed class OrthancStudySearchResponse
+    {
+        [JsonPropertyName("ID")]
+        public string Id { get; init; } = string.Empty;
+
+        public Dictionary<string, string>? RequestedTags { get; init; }
+    }
+
+    private sealed class OrthancStudyDetailResponse
+    {
+        public List<string> Instances { get; init; } = [];
     }
 }

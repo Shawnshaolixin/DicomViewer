@@ -61,6 +61,7 @@
                         <Button Content="执行曝光" Command="{Binding ExecuteExposureCommand}" />
                         <Button Content="回看结果" Command="{Binding ReviewExposureCommand}" />
                         <Button Content="验证连接" Command="{Binding VerifyPacsConnectionCommand}" />
+                        <Button Content="查询 PACS" Command="{Binding QueryPacsStudiesCommand}" />
                         <Button Content="发送 PACS" Command="{Binding SendToPacsCommand}" />
                     </StackPanel>
                 </DockPanel>
@@ -108,6 +109,40 @@
                         </ListBox>
                     </StackPanel>
                 </Border>
+
+                <Border Margin="0,16,0,0" Padding="16" Background="#16202A" CornerRadius="12">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="历史检查" FontSize="18" FontWeight="SemiBold" />
+                            <Button Content="回看历史" Command="{Binding ReviewHistoryCommand}" DockPanel.Dock="Right" Margin="8,0,0,0" />
+                        </DockPanel>
+                        <ListBox ItemsSource="{Binding HistoryItems}"
+                                 SelectedItem="{Binding SelectedHistoryItem}"
+                                 Background="#10171E"
+                                 BorderThickness="0"
+                                 Foreground="#EAF1F5"
+                                 MinHeight="180"
+                                 MaxHeight="260"
+                                 Margin="0,12,0,0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:ExamHistoryItem}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PatientName}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding ProcedureDescription}" Foreground="#C4D2DB" Margin="0,2,0,0" />
+                                        <TextBlock Foreground="#9FB0BC" Margin="0,2,0,0">
+                                            <Run Text="{Binding BodyPart}" />
+                                            <Run Text=" / " />
+                                            <Run Text="{Binding Projection}" />
+                                            <Run Text=" / " />
+                                            <Run Text="{Binding WorkflowStatus}" />
+                                        </TextBlock>
+                                        <TextBlock Foreground="#7E96A5" Margin="0,2,0,0" Text="{Binding UpdatedAtUtc, StringFormat=yyyy-MM-dd HH:mm:ss}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
             </StackPanel>
 
             <StackPanel Grid.Row="1" Grid.Column="2">
@@ -134,9 +169,43 @@
                                 <TextBox Text="{Binding PacsPortText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
                             </StackPanel>
                         </UniformGrid>
+                        <TextBlock Text="Orthanc REST Port" Foreground="#9FB0BC" />
+                        <TextBox Text="{Binding RestApiPortText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" Margin="0,0,0,8" />
                         <TextBlock Text="输出目录" Foreground="#9FB0BC" />
                         <TextBox Text="{Binding OutputDirectoryText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
                         <Button Content="应用 PACS 配置" Command="{Binding ApplyPacsConfigurationCommand}" Margin="0,12,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="0,16,0,0" Padding="16" Background="#16202A" CornerRadius="12">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="Orthanc 查询与回取" FontSize="18" FontWeight="SemiBold" />
+                            <Button Content="回取选中检查" Command="{Binding RetrieveRemoteStudyCommand}" DockPanel.Dock="Right" Margin="8,0,0,0" />
+                        </DockPanel>
+                        <ListBox ItemsSource="{Binding RemoteStudies}"
+                                 SelectedItem="{Binding SelectedRemoteStudy}"
+                                 Background="#10171E"
+                                 BorderThickness="0"
+                                 Foreground="#EAF1F5"
+                                 MinHeight="180"
+                                 MaxHeight="260"
+                                 Margin="0,12,0,0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:PacsRemoteStudy}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PatientName}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding StudyDescription}" Foreground="#C4D2DB" Margin="0,2,0,0" />
+                                        <TextBlock Foreground="#9FB0BC" Margin="0,2,0,0">
+                                            <Run Text="{Binding ModalitiesInStudy}" />
+                                            <Run Text=" / 实例 " />
+                                            <Run Text="{Binding InstanceCount}" />
+                                        </TextBlock>
+                                        <TextBlock Foreground="#7E96A5" Margin="0,2,0,0" Text="{Binding StudyDateUtc, StringFormat=yyyy-MM-dd}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </StackPanel>
                 </Border>
 

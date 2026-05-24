@@ -5,6 +5,8 @@ namespace DicomViewer.Application.Models;
 
 public sealed record ConsoleSnapshot(
     IReadOnlyList<WorklistItem> WorklistItems,
+    IReadOnlyList<ExamHistoryItem> HistoryItems,
+    IReadOnlyList<PacsRemoteStudy> RemoteStudies,
     string? SelectedOrderId,
     ExposureParameters ExposureParameters,
     ExposureParameterRange ExposureParameterRange,

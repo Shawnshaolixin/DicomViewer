@@ -44,4 +44,32 @@ public sealed class SqliteExamSessionStoreTests
             tempDirectory.Delete(true);
         }
     }
+
+    [Fact]
+    public void GetRecent_ReturnsSessionsOrderedByUpdatedTimeDescending()
+    {
+        var tempDirectory = Directory.CreateTempSubdirectory();
+        var databasePath = Path.Combine(tempDirectory.FullName, "dicomviewer.db");
+        var connectionFactory = new SqliteAppDbConnectionFactory(databasePath);
+        var databaseInitializer = new SqliteDatabaseInitializer(connectionFactory);
+        var store = new SqliteExamSessionStore(connectionFactory);
+
+        try
+        {
+            databaseInitializer.EnsureCreated();
+
+            store.Save(new ExamSessionRecord("session-1", "ORD-1", "P-1", "Patient A", "Chest PA", "CHEST", "PA", ExamWorkflowStatus.Ready, DeviceOperationalState.Ready, new DateTime(2026, 5, 23, 1, 0, 0, DateTimeKind.Utc), null, null, null, new DateTime(2026, 5, 23, 1, 5, 0, DateTimeKind.Utc)));
+            store.Save(new ExamSessionRecord("session-2", "ORD-2", "P-2", "Patient B", "Knee AP", "KNEE", "AP", ExamWorkflowStatus.Completed, DeviceOperationalState.Ready, new DateTime(2026, 5, 23, 2, 0, 0, DateTimeKind.Utc), null, @"D:\output\SIM-2.dcm", "SIM-2", new DateTime(2026, 5, 23, 2, 5, 0, DateTimeKind.Utc)));
+
+            var recent = store.GetRecent(10);
+
+            Assert.Equal(2, recent.Count);
+            Assert.Equal("session-2", recent[0].SessionId);
+            Assert.Equal("session-1", recent[1].SessionId);
+        }
+        finally
+        {
+            tempDirectory.Delete(true);
+        }
+    }
 }

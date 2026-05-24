@@ -101,6 +101,47 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
             ParseUtc(reader.GetString(13)));
     }
 
+    public IReadOnlyList<ExamSessionRecord> GetRecent(int limit)
+    {
+        var sessions = new List<ExamSessionRecord>();
+
+        using var connection = _connectionFactory.CreateConnection();
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT SessionId, OrderId, PatientId, PatientName, ProcedureDescription, BodyPart, Projection,
+                   WorkflowStatus, DeviceState, StartedAtUtc, LastExposureAtUtc, LastGeneratedArtifactPath,
+                   LastImageId, UpdatedAtUtc
+            FROM ExamSessions
+            ORDER BY UpdatedAtUtc DESC
+            LIMIT $limit;
+            """;
+        AddParameter(command, "$limit", limit);
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            sessions.Add(new ExamSessionRecord(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                (ExamWorkflowStatus)reader.GetInt32(7),
+                (DeviceOperationalState)reader.GetInt32(8),
+                ParseUtc(reader.GetString(9)),
+                reader.IsDBNull(10) ? null : ParseUtc(reader.GetString(10)),
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12),
+                ParseUtc(reader.GetString(13))));
+        }
+
+        return sessions;
+    }
+
     private static DateTime ParseUtc(string value)
     {
         return DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);

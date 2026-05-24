@@ -22,6 +22,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private bool _isApplyingConsoleSnapshot;
     private bool _isInitialized;
     private WorklistItem? _selectedWorklistItem;
+    private ExamHistoryItem? _selectedHistoryItem;
+    private PacsRemoteStudy? _selectedRemoteStudy;
     private string _consoleStatusText = "控制台尚未初始化";
     private string _consoleNotesText = "请加载工作列表。";
     private string _consolePatientText = "未选择患者";
@@ -36,6 +38,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private string _calledAeTitleText = PacsConfiguration.Default.CalledAeTitle;
     private string _pacsHostText = PacsConfiguration.Default.Host;
     private string _pacsPortText = PacsConfiguration.Default.Port.ToString();
+    private string _restApiPortText = PacsConfiguration.Default.RestApiPort.ToString();
     private string _outputDirectoryText = PacsConfiguration.Default.OutputDirectory;
     private string _kilovoltagePeakText = ExposureParameters.Default.KilovoltagePeak.ToString("0.#");
     private string _tubeCurrentMilliampereText = ExposureParameters.Default.TubeCurrentMilliampere.ToString("0.#");
@@ -65,6 +68,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         _examWorkflowService = examWorkflowService;
         _regionManager = regionManager;
         WorklistItems = new ObservableCollection<WorklistItem>();
+        HistoryItems = new ObservableCollection<ExamHistoryItem>();
+        RemoteStudies = new ObservableCollection<PacsRemoteStudy>();
         InterlockMessages = new ObservableCollection<string>();
         AuditEntries = new ObservableCollection<string>();
 
@@ -72,13 +77,20 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         RunInterlockCheckCommand = new DelegateCommand(RunInterlockCheck);
         ExecuteExposureCommand = new DelegateCommand(async () => await ExecuteExposureAsync()).ObservesCanExecute(() => CanExecuteExposure);
         SendToPacsCommand = new DelegateCommand(async () => await SendToPacsAsync()).ObservesCanExecute(() => CanSendToPacs);
+        QueryPacsStudiesCommand = new DelegateCommand(async () => await QueryPacsStudiesAsync());
+        RetrieveRemoteStudyCommand = new DelegateCommand(async () => await RetrieveRemoteStudyAsync()).ObservesCanExecute(() => CanRetrieveRemoteStudy);
         ReviewExposureCommand = new DelegateCommand(ReviewExposure).ObservesCanExecute(() => CanReviewExposure);
+        ReviewHistoryCommand = new DelegateCommand(ReviewHistory).ObservesCanExecute(() => CanReviewHistory);
         VerifyPacsConnectionCommand = new DelegateCommand(async () => await VerifyPacsConnectionAsync());
         ApplyExposureParametersCommand = new DelegateCommand(ApplyExposureParameters);
         ApplyPacsConfigurationCommand = new DelegateCommand(ApplyPacsConfiguration);
     }
 
     public ObservableCollection<WorklistItem> WorklistItems { get; }
+
+    public ObservableCollection<ExamHistoryItem> HistoryItems { get; }
+
+    public ObservableCollection<PacsRemoteStudy> RemoteStudies { get; }
 
     public ObservableCollection<string> InterlockMessages { get; }
 
@@ -94,6 +106,10 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 
     public bool CanReviewExposure => LastArtifactPathText != "-";
 
+    public bool CanReviewHistory => SelectedHistoryItem is not null && !string.IsNullOrWhiteSpace(SelectedHistoryItem.ArtifactPath);
+
+    public bool CanRetrieveRemoteStudy => SelectedRemoteStudy is not null;
+
     public WorklistItem? SelectedWorklistItem
     {
         get => _selectedWorklistItem;
@@ -108,6 +124,30 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             if (!_isApplyingConsoleSnapshot && value is not null)
             {
                 ApplyConsoleSnapshot(_examWorkflowService.SelectOrder(value.OrderId));
+            }
+        }
+    }
+
+    public ExamHistoryItem? SelectedHistoryItem
+    {
+        get => _selectedHistoryItem;
+        set
+        {
+            if (SetProperty(ref _selectedHistoryItem, value))
+            {
+                RaisePropertyChanged(nameof(CanReviewHistory));
+            }
+        }
+    }
+
+    public PacsRemoteStudy? SelectedRemoteStudy
+    {
+        get => _selectedRemoteStudy;
+        set
+        {
+            if (SetProperty(ref _selectedRemoteStudy, value))
+            {
+                RaisePropertyChanged(nameof(CanRetrieveRemoteStudy));
             }
         }
     }
@@ -215,6 +255,12 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     {
         get => _pacsPortText;
         set => SetProperty(ref _pacsPortText, value);
+    }
+
+    public string RestApiPortText
+    {
+        get => _restApiPortText;
+        set => SetProperty(ref _restApiPortText, value);
     }
 
     public string OutputDirectoryText
@@ -363,7 +409,13 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 
     public DelegateCommand SendToPacsCommand { get; }
 
+    public DelegateCommand QueryPacsStudiesCommand { get; }
+
+    public DelegateCommand RetrieveRemoteStudyCommand { get; }
+
     public DelegateCommand ReviewExposureCommand { get; }
+
+    public DelegateCommand ReviewHistoryCommand { get; }
 
     public DelegateCommand VerifyPacsConnectionCommand { get; }
 
@@ -446,6 +498,29 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         ApplyConsoleSnapshot(await _examWorkflowService.VerifyPacsConnectionAsync());
     }
 
+    private async Task QueryPacsStudiesAsync()
+    {
+        ApplyPacsConfiguration();
+        ApplyConsoleSnapshot(await _examWorkflowService.QueryPacsStudiesAsync());
+    }
+
+    private async Task RetrieveRemoteStudyAsync()
+    {
+        if (SelectedRemoteStudy is null)
+        {
+            return;
+        }
+
+        ApplyPacsConfiguration();
+        var result = await _examWorkflowService.RetrievePacsStudyAsync(SelectedRemoteStudy.RemoteStudyId);
+        ApplyConsoleSnapshot(result.Snapshot);
+
+        if (!string.IsNullOrWhiteSpace(result.ImportedDirectoryPath))
+        {
+            NavigateToViewerDirectory(result.ImportedDirectoryPath);
+        }
+    }
+
     /// <summary>
     /// 在已有曝光结果时跳转到查看器页面进行回看。
     /// </summary>
@@ -457,6 +532,16 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         }
 
         NavigateToViewer(LastArtifactPathText);
+    }
+
+    private void ReviewHistory()
+    {
+        if (SelectedHistoryItem is null || string.IsNullOrWhiteSpace(SelectedHistoryItem.ArtifactPath))
+        {
+            return;
+        }
+
+        NavigateToViewer(SelectedHistoryItem.ArtifactPath);
     }
 
     /// <summary>
@@ -543,6 +628,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             string.IsNullOrWhiteSpace(CalledAeTitleText) ? PacsConfiguration.Default.CalledAeTitle : CalledAeTitleText.Trim().ToUpperInvariant(),
             string.IsNullOrWhiteSpace(PacsHostText) ? PacsConfiguration.Default.Host : PacsHostText.Trim(),
             int.TryParse(PacsPortText, out var port) ? port : PacsConfiguration.Default.Port,
+            int.TryParse(RestApiPortText, out var restApiPort) ? restApiPort : PacsConfiguration.Default.RestApiPort,
             string.IsNullOrWhiteSpace(OutputDirectoryText) ? PacsConfiguration.Default.OutputDirectory : OutputDirectoryText.Trim());
     }
 
@@ -558,10 +644,24 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             WorklistItems.Add(item);
         }
 
+        HistoryItems.Clear();
+        foreach (var item in snapshot.HistoryItems)
+        {
+            HistoryItems.Add(item);
+        }
+
+        RemoteStudies.Clear();
+        foreach (var item in snapshot.RemoteStudies)
+        {
+            RemoteStudies.Add(item);
+        }
+
         RaisePropertyChanged(nameof(HasWorklistItems));
         SelectedWorklistItem = snapshot.SelectedOrderId is null
             ? null
             : WorklistItems.FirstOrDefault(item => item.OrderId == snapshot.SelectedOrderId);
+        SelectedHistoryItem = null;
+        SelectedRemoteStudy = null;
 
         ConsoleStatusText = snapshot.StatusText;
         ConsoleNotesText = snapshot.NotesText;
@@ -578,6 +678,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         CalledAeTitleText = snapshot.PacsConfiguration.CalledAeTitle;
         PacsHostText = snapshot.PacsConfiguration.Host;
         PacsPortText = snapshot.PacsConfiguration.Port.ToString();
+        RestApiPortText = snapshot.PacsConfiguration.RestApiPort.ToString();
         OutputDirectoryText = snapshot.PacsConfiguration.OutputDirectory;
 
         KilovoltagePeakText = snapshot.ExposureParameters.KilovoltagePeak.ToString("0.#");
@@ -617,6 +718,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         RaisePropertyChanged(nameof(CanExecuteExposure));
         RaisePropertyChanged(nameof(CanSendToPacs));
         RaisePropertyChanged(nameof(CanReviewExposure));
+        RaisePropertyChanged(nameof(CanReviewHistory));
+        RaisePropertyChanged(nameof(CanRetrieveRemoteStudy));
     }
 
     /// <summary>
@@ -638,6 +741,11 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             return;
         }
 
+        NavigateToViewerDirectory(importPath);
+    }
+
+    private void NavigateToViewerDirectory(string importPath)
+    {
         var parameters = new NavigationParameters
         {
             { "importPath", importPath },
