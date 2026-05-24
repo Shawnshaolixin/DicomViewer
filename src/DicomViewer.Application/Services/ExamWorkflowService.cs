@@ -17,6 +17,7 @@ public sealed class ExamWorkflowService
     private readonly IExposureSimulationService _exposureSimulationService;
     private readonly IPacsStoreService _pacsStoreService;
     private readonly IAuditService _auditService;
+    private readonly IConsoleConfigurationStore _consoleConfigurationStore;
 
     private IReadOnlyList<ImagingOrder> _orders = Array.Empty<ImagingOrder>();
     private ImagingOrder? _selectedOrder;
@@ -29,19 +30,22 @@ public sealed class ExamWorkflowService
     private PacsConfiguration _pacsConfiguration = PacsConfiguration.Default;
     private string _statusText = "控制台尚未初始化";
     private string _notesText = "请先加载工作列表。";
+    private bool _isConfigurationLoaded;
 
     public ExamWorkflowService(
         IWorklistService worklistService,
         IInterlockService interlockService,
         IExposureSimulationService exposureSimulationService,
         IPacsStoreService pacsStoreService,
-        IAuditService auditService)
+        IAuditService auditService,
+        IConsoleConfigurationStore consoleConfigurationStore)
     {
         _worklistService = worklistService;
         _interlockService = interlockService;
         _exposureSimulationService = exposureSimulationService;
         _pacsStoreService = pacsStoreService;
         _auditService = auditService;
+        _consoleConfigurationStore = consoleConfigurationStore;
     }
 
     /// <summary>
@@ -60,6 +64,7 @@ public sealed class ExamWorkflowService
     /// </summary>
     public async Task<ConsoleSnapshot> LoadWorklistAsync(CancellationToken cancellationToken = default)
     {
+        EnsureConfigurationLoaded();
         _orders = await _worklistService.LoadAsync(cancellationToken);
         _statusText = _orders.Count == 0 ? "工作列表为空" : $"已加载 {_orders.Count} 条工作列表";
         _notesText = _orders.Count == 0 ? "请检查模拟数据源。" : "请选择一条检查任务进入准备状态。";
@@ -132,6 +137,7 @@ public sealed class ExamWorkflowService
     public ConsoleSnapshot UpdatePacsConfiguration(PacsConfiguration pacsConfiguration)
     {
         _pacsConfiguration = pacsConfiguration;
+        SaveConfiguration();
         _statusText = "PACS 配置已更新";
         _notesText = $"{pacsConfiguration.CallingAeTitle} -> {pacsConfiguration.CalledAeTitle} @ {pacsConfiguration.Host}:{pacsConfiguration.Port}";
         _auditService.Record("修改 PACS 配置");
@@ -144,10 +150,30 @@ public sealed class ExamWorkflowService
     public ConsoleSnapshot UpdateExposureParameterRange(ExposureParameterRange exposureParameterRange)
     {
         _exposureParameterRange = exposureParameterRange;
+        SaveConfiguration();
         _statusText = "参数范围已更新";
         _notesText = $"kV={exposureParameterRange.MinKilovoltagePeak:0.#}-{exposureParameterRange.MaxKilovoltagePeak:0.#}, mA={exposureParameterRange.MinTubeCurrentMilliampere:0.#}-{exposureParameterRange.MaxTubeCurrentMilliampere:0.#}";
         _auditService.Record("修改参数范围");
         return BuildSnapshot();
+    }
+
+    private void EnsureConfigurationLoaded()
+    {
+        if (_isConfigurationLoaded)
+        {
+            return;
+        }
+
+        var configuration = _consoleConfigurationStore.Load();
+        _pacsConfiguration = configuration.PacsConfiguration;
+        _exposureParameterRange = configuration.ExposureParameterRange;
+        _isConfigurationLoaded = true;
+    }
+
+    private void SaveConfiguration()
+    {
+        _isConfigurationLoaded = true;
+        _consoleConfigurationStore.Save(new ConsoleConfiguration(_pacsConfiguration, _exposureParameterRange));
     }
 
     /// <summary>

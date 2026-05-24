@@ -113,7 +113,8 @@ public sealed class ExamWorkflowServiceTests
             new DefaultInterlockService(),
             recordingExposureSimulationService ?? new FakeExposureSimulationService(),
             new FakePacsStoreService(),
-            new InMemoryAuditService());
+                new InMemoryAuditService(),
+                new InMemoryConsoleConfigurationStore());
     }
 
     private sealed class FixedWorklistService : IWorklistService
@@ -203,6 +204,21 @@ public sealed class ExamWorkflowServiceTests
                 configuration.Port,
                 dicomFilePath,
                 DateTime.UtcNow));
+        }
+    }
+
+    private sealed class InMemoryConsoleConfigurationStore : IConsoleConfigurationStore
+    {
+        public ConsoleConfiguration Configuration { get; private set; } = ConsoleConfiguration.Default;
+
+        public ConsoleConfiguration Load()
+        {
+            return Configuration;
+        }
+
+        public void Save(ConsoleConfiguration configuration)
+        {
+            Configuration = configuration;
         }
     }
 }

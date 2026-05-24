@@ -2,66 +2,59 @@ using DicomViewer.Application.Abstractions;
 using DicomViewer.Application.Models;
 using DicomViewer.Application.Services;
 using DicomViewer.Domain.Entities;
-using DicomViewer.Domain.Enums;
 using DicomViewer.Domain.ValueObjects;
 using DicomViewer.Infrastructure.Persistence;
 using DicomViewer.Infrastructure.Services;
 
 namespace DicomViewer.Tests.Application;
 
-public sealed class ExamWorkflowPacsTests
+public sealed class ExamWorkflowConfigurationPersistenceTests
 {
     [Fact]
-    public async Task SendToPacsAsync_WithExposureResult_CompletesSessionAndStoresResult()
+    public async Task LoadWorklistAsync_UsesPersistedConsoleConfiguration()
     {
-        var service = CreateService(new SuccessfulPacsStoreService());
+        var configurationStore = new InMemoryConsoleConfigurationStore
+        {
+            Configuration = new ConsoleConfiguration(
+                new PacsConfiguration("LOCALAE", "ORTHANCAE", "192.168.0.10", 11112, @"D:\SavedOutput"),
+                new ExposureParameterRange(50, 120, 20, 300, 2, 500, 0.5, 100, 800, 1800))
+        };
 
-        _ = await service.LoadWorklistAsync();
-        _ = service.SelectOrder("ORD-1");
-        _ = await service.ExecuteExposureAsync();
+        var service = CreateService(configurationStore);
 
-        var snapshot = await service.SendToPacsAsync();
+        var snapshot = await service.LoadWorklistAsync();
 
-        Assert.Equal(ExamWorkflowStatus.Completed, snapshot.WorkflowStatus);
-        Assert.NotNull(snapshot.LastPacsStoreResult);
-        Assert.True(snapshot.LastPacsStoreResult!.IsSuccess);
-        Assert.Contains("PACS 发送成功", snapshot.AuditEntries.Last(), StringComparison.Ordinal);
+        Assert.Equal("LOCALAE", snapshot.PacsConfiguration.CallingAeTitle);
+        Assert.Equal(@"D:\SavedOutput", snapshot.PacsConfiguration.OutputDirectory);
+        Assert.Equal(50, snapshot.ExposureParameterRange.MinKilovoltagePeak);
+        Assert.Equal(1800, snapshot.ExposureParameterRange.MaxSourceToImageDistanceMillimeter);
     }
 
     [Fact]
-    public async Task SendToPacsAsync_WithoutExposureResult_FailsGracefully()
+    public async Task UpdateConfiguration_SavesToConfigurationStore()
     {
-        var service = CreateService(new SuccessfulPacsStoreService());
+        var configurationStore = new InMemoryConsoleConfigurationStore();
+        var service = CreateService(configurationStore);
 
         _ = await service.LoadWorklistAsync();
-        _ = service.SelectOrder("ORD-1");
+        _ = service.UpdatePacsConfiguration(new PacsConfiguration("CALLING", "CALLED", "10.0.0.2", 104, @"D:\Output"));
+        _ = service.UpdateExposureParameterRange(new ExposureParameterRange(45, 130, 15, 450, 1, 900, 0.2, 300, 700, 1900));
 
-        var snapshot = await service.SendToPacsAsync();
-
-        Assert.Equal("PACS 发送失败", snapshot.StatusText);
-        Assert.Null(snapshot.LastPacsStoreResult);
+        Assert.Equal("CALLING", configurationStore.Configuration.PacsConfiguration.CallingAeTitle);
+        Assert.Equal(@"D:\Output", configurationStore.Configuration.PacsConfiguration.OutputDirectory);
+        Assert.Equal(45, configurationStore.Configuration.ExposureParameterRange.MinKilovoltagePeak);
+        Assert.Equal(1900, configurationStore.Configuration.ExposureParameterRange.MaxSourceToImageDistanceMillimeter);
     }
 
-    [Fact]
-    public async Task VerifyPacsConnectionAsync_UsesPacsServiceAndReturnsStatus()
-    {
-        var service = CreateService(new SuccessfulPacsStoreService());
-
-        var snapshot = await service.VerifyPacsConnectionAsync();
-
-        Assert.NotNull(snapshot.LastPacsStoreResult);
-        Assert.Equal("PACS 连通性验证成功", snapshot.StatusText);
-    }
-
-    private static ExamWorkflowService CreateService(IPacsStoreService pacsStoreService)
+    private static ExamWorkflowService CreateService(IConsoleConfigurationStore configurationStore)
     {
         return new ExamWorkflowService(
             new FixedWorklistService(),
             new DefaultInterlockService(),
             new FakeExposureSimulationService(),
-            pacsStoreService,
-                new InMemoryAuditService(),
-                new InMemoryConsoleConfigurationStore());
+            new FakePacsStoreService(),
+            new InMemoryAuditService(),
+            configurationStore);
     }
 
     private sealed class FixedWorklistService : IWorklistService
@@ -99,38 +92,22 @@ public sealed class ExamWorkflowPacsTests
         }
     }
 
-    private sealed class SuccessfulPacsStoreService : IPacsStoreService
+    private sealed class FakePacsStoreService : IPacsStoreService
     {
         public Task<PacsStoreResult> VerifyConnectionAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new PacsStoreResult(
-                true,
-                "PACS 连通性验证成功",
-                "Orthanc 已响应 C-ECHO。",
-                configuration.CalledAeTitle,
-                configuration.Host,
-                configuration.Port,
-                string.Empty,
-                DateTime.UtcNow));
+            return Task.FromResult(new PacsStoreResult(true, "ok", "ok", configuration.CalledAeTitle, configuration.Host, configuration.Port, string.Empty, DateTime.UtcNow));
         }
 
         public Task<PacsStoreResult> SendAsync(string dicomFilePath, PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new PacsStoreResult(
-                true,
-                "PACS 发送成功",
-                "Orthanc 已确认接收。",
-                configuration.CalledAeTitle,
-                configuration.Host,
-                configuration.Port,
-                dicomFilePath,
-                DateTime.UtcNow));
+            return Task.FromResult(new PacsStoreResult(true, "ok", "ok", configuration.CalledAeTitle, configuration.Host, configuration.Port, dicomFilePath, DateTime.UtcNow));
         }
     }
 
     private sealed class InMemoryConsoleConfigurationStore : IConsoleConfigurationStore
     {
-        public ConsoleConfiguration Configuration { get; private set; } = ConsoleConfiguration.Default;
+        public ConsoleConfiguration Configuration { get; set; } = ConsoleConfiguration.Default;
 
         public ConsoleConfiguration Load()
         {

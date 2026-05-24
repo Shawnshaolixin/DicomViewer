@@ -40,6 +40,7 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<IStudyCatalogService, FileSystemStudyCatalogService>();
         containerRegistry.RegisterSingleton<IWorklistService, MockWorklistService>();
         containerRegistry.RegisterSingleton<IInterlockService, DefaultInterlockService>();
+        containerRegistry.RegisterSingleton<IConsoleConfigurationStore, JsonConsoleConfigurationStore>();
         containerRegistry.RegisterSingleton<SimulatedDicomBuilder>();
         containerRegistry.RegisterSingleton<IExposureSimulationService, MockExposureSimulationService>();
         containerRegistry.RegisterSingleton<IPacsStoreService, OrthancStoreService>();
