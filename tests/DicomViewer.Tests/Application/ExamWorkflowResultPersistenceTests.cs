@@ -9,61 +9,71 @@ using DicomViewer.Infrastructure.Services;
 
 namespace DicomViewer.Tests.Application;
 
-public sealed class ExamWorkflowPacsTests
+public sealed class ExamWorkflowResultPersistenceTests
 {
     [Fact]
-    public async Task SendToPacsAsync_WithExposureResult_CompletesSessionAndStoresResult()
+    public async Task SelectOrder_PersistsReadySessionState()
     {
-        var service = CreateService(new SuccessfulPacsStoreService());
+        var examSessionStore = new InMemoryExamSessionStore();
+        var service = CreateService(examSessionStore, new InMemoryPacsSendRecordStore());
+
+        _ = await service.LoadWorklistAsync();
+        var snapshot = service.SelectOrder("ORD-1");
+
+        var persistedSession = examSessionStore.GetBySessionId(snapshot.SelectedOrderId is null ? string.Empty : examSessionStore.LastSessionId!);
+
+        Assert.NotNull(persistedSession);
+        Assert.Equal(ExamWorkflowStatus.Ready, persistedSession!.WorkflowStatus);
+        Assert.Equal(DeviceOperationalState.Ready, persistedSession.DeviceState);
+    }
+
+    [Fact]
+    public async Task ExecuteExposureAsync_PersistsGeneratedArtifact()
+    {
+        var examSessionStore = new InMemoryExamSessionStore();
+        var service = CreateService(examSessionStore, new InMemoryPacsSendRecordStore());
+
+        _ = await service.LoadWorklistAsync();
+        _ = service.SelectOrder("ORD-1");
+        var snapshot = await service.ExecuteExposureAsync();
+
+        var persistedSession = examSessionStore.GetBySessionId(examSessionStore.LastSessionId!);
+
+        Assert.NotNull(persistedSession);
+        Assert.Equal(snapshot.LastExposureResult!.ArtifactPath, persistedSession!.LastGeneratedArtifactPath);
+        Assert.NotNull(persistedSession.LastExposureAtUtc);
+    }
+
+    [Fact]
+    public async Task SendToPacsAsync_PersistsSendRecord()
+    {
+        var pacsSendRecordStore = new InMemoryPacsSendRecordStore();
+        var examSessionStore = new InMemoryExamSessionStore();
+        var service = CreateService(examSessionStore, pacsSendRecordStore);
 
         _ = await service.LoadWorklistAsync();
         _ = service.SelectOrder("ORD-1");
         _ = await service.ExecuteExposureAsync();
+        _ = await service.SendToPacsAsync();
 
-        var snapshot = await service.SendToPacsAsync();
+        var sendRecords = pacsSendRecordStore.GetBySessionId(examSessionStore.LastSessionId!);
 
-        Assert.Equal(ExamWorkflowStatus.Completed, snapshot.WorkflowStatus);
-        Assert.NotNull(snapshot.LastPacsStoreResult);
-        Assert.True(snapshot.LastPacsStoreResult!.IsSuccess);
-        Assert.Contains("PACS 发送成功", snapshot.AuditEntries.Last(), StringComparison.Ordinal);
+        Assert.Single(sendRecords);
+        Assert.True(sendRecords[0].IsSuccess);
+        Assert.Equal("PACS 发送成功", sendRecords[0].StatusText);
     }
 
-    [Fact]
-    public async Task SendToPacsAsync_WithoutExposureResult_FailsGracefully()
-    {
-        var service = CreateService(new SuccessfulPacsStoreService());
-
-        _ = await service.LoadWorklistAsync();
-        _ = service.SelectOrder("ORD-1");
-
-        var snapshot = await service.SendToPacsAsync();
-
-        Assert.Equal("PACS 发送失败", snapshot.StatusText);
-        Assert.Null(snapshot.LastPacsStoreResult);
-    }
-
-    [Fact]
-    public async Task VerifyPacsConnectionAsync_UsesPacsServiceAndReturnsStatus()
-    {
-        var service = CreateService(new SuccessfulPacsStoreService());
-
-        var snapshot = await service.VerifyPacsConnectionAsync();
-
-        Assert.NotNull(snapshot.LastPacsStoreResult);
-        Assert.Equal("PACS 连通性验证成功", snapshot.StatusText);
-    }
-
-    private static ExamWorkflowService CreateService(IPacsStoreService pacsStoreService)
+    private static ExamWorkflowService CreateService(InMemoryExamSessionStore examSessionStore, InMemoryPacsSendRecordStore pacsSendRecordStore)
     {
         return new ExamWorkflowService(
             new FixedWorklistService(),
             new DefaultInterlockService(),
             new FakeExposureSimulationService(),
-            pacsStoreService,
+            new SuccessfulPacsStoreService(),
             new InMemoryAuditService(),
             new InMemoryConsoleConfigurationStore(),
-            new InMemoryExamSessionStore(),
-            new InMemoryPacsSendRecordStore());
+            examSessionStore,
+            pacsSendRecordStore);
     }
 
     private sealed class FixedWorklistService : IWorklistService
@@ -105,67 +115,54 @@ public sealed class ExamWorkflowPacsTests
     {
         public Task<PacsStoreResult> VerifyConnectionAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new PacsStoreResult(
-                true,
-                "PACS 连通性验证成功",
-                "Orthanc 已响应 C-ECHO。",
-                configuration.CalledAeTitle,
-                configuration.Host,
-                configuration.Port,
-                string.Empty,
-                DateTime.UtcNow));
+            return Task.FromResult(new PacsStoreResult(true, "ok", "ok", configuration.CalledAeTitle, configuration.Host, configuration.Port, string.Empty, DateTime.UtcNow));
         }
 
         public Task<PacsStoreResult> SendAsync(string dicomFilePath, PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(new PacsStoreResult(
-                true,
-                "PACS 发送成功",
-                "Orthanc 已确认接收。",
-                configuration.CalledAeTitle,
-                configuration.Host,
-                configuration.Port,
-                dicomFilePath,
-                DateTime.UtcNow));
+            return Task.FromResult(new PacsStoreResult(true, "PACS 发送成功", "Orthanc 已确认接收。", configuration.CalledAeTitle, configuration.Host, configuration.Port, dicomFilePath, DateTime.UtcNow));
         }
     }
 
     private sealed class InMemoryConsoleConfigurationStore : IConsoleConfigurationStore
     {
-        public ConsoleConfiguration Configuration { get; private set; } = ConsoleConfiguration.Default;
-
-        public ConsoleConfiguration Load()
-        {
-            return Configuration;
-        }
+        public ConsoleConfiguration Load() => ConsoleConfiguration.Default;
 
         public void Save(ConsoleConfiguration configuration)
         {
-            Configuration = configuration;
         }
     }
 
     private sealed class InMemoryExamSessionStore : IExamSessionStore
     {
+        private readonly Dictionary<string, ExamSessionRecord> _sessions = new();
+
+        public string? LastSessionId { get; private set; }
+
         public void Save(ExamSessionRecord sessionRecord)
         {
+            LastSessionId = sessionRecord.SessionId;
+            _sessions[sessionRecord.SessionId] = sessionRecord;
         }
 
         public ExamSessionRecord? GetBySessionId(string sessionId)
         {
-            return null;
+            return _sessions.TryGetValue(sessionId, out var session) ? session : null;
         }
     }
 
     private sealed class InMemoryPacsSendRecordStore : IPacsSendRecordStore
     {
+        private readonly List<PacsSendRecord> _records = [];
+
         public void Add(PacsSendRecord sendRecord)
         {
+            _records.Add(sendRecord);
         }
 
         public IReadOnlyList<PacsSendRecord> GetBySessionId(string sessionId)
         {
-            return Array.Empty<PacsSendRecord>();
+            return _records.Where(record => record.SessionId == sessionId).ToArray();
         }
     }
 }

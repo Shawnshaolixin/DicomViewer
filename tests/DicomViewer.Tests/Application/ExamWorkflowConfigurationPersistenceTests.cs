@@ -54,7 +54,9 @@ public sealed class ExamWorkflowConfigurationPersistenceTests
             new FakeExposureSimulationService(),
             new FakePacsStoreService(),
             new InMemoryAuditService(),
-            configurationStore);
+            configurationStore,
+            new InMemoryExamSessionStore(),
+            new InMemoryPacsSendRecordStore());
     }
 
     private sealed class FixedWorklistService : IWorklistService
@@ -117,6 +119,30 @@ public sealed class ExamWorkflowConfigurationPersistenceTests
         public void Save(ConsoleConfiguration configuration)
         {
             Configuration = configuration;
+        }
+    }
+
+    private sealed class InMemoryExamSessionStore : IExamSessionStore
+    {
+        public void Save(ExamSessionRecord sessionRecord)
+        {
+        }
+
+        public ExamSessionRecord? GetBySessionId(string sessionId)
+        {
+            return null;
+        }
+    }
+
+    private sealed class InMemoryPacsSendRecordStore : IPacsSendRecordStore
+    {
+        public void Add(PacsSendRecord sendRecord)
+        {
+        }
+
+        public IReadOnlyList<PacsSendRecord> GetBySessionId(string sessionId)
+        {
+            return Array.Empty<PacsSendRecord>();
         }
     }
 }

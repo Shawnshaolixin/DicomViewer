@@ -43,6 +43,8 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<IAppDbConnectionFactory, SqliteAppDbConnectionFactory>();
         containerRegistry.RegisterSingleton<SqliteDatabaseInitializer>();
         containerRegistry.RegisterSingleton<IConsoleConfigurationStore, SqliteConsoleConfigurationStore>();
+        containerRegistry.RegisterSingleton<IExamSessionStore, SqliteExamSessionStore>();
+        containerRegistry.RegisterSingleton<IPacsSendRecordStore, SqlitePacsSendRecordStore>();
         containerRegistry.RegisterSingleton<SimulatedDicomBuilder>();
         containerRegistry.RegisterSingleton<IExposureSimulationService, MockExposureSimulationService>();
         containerRegistry.RegisterSingleton<IPacsStoreService, OrthancStoreService>();

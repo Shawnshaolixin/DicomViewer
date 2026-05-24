@@ -113,8 +113,10 @@ public sealed class ExamWorkflowServiceTests
             new DefaultInterlockService(),
             recordingExposureSimulationService ?? new FakeExposureSimulationService(),
             new FakePacsStoreService(),
-                new InMemoryAuditService(),
-                new InMemoryConsoleConfigurationStore());
+            new InMemoryAuditService(),
+            new InMemoryConsoleConfigurationStore(),
+            new InMemoryExamSessionStore(),
+            new InMemoryPacsSendRecordStore());
     }
 
     private sealed class FixedWorklistService : IWorklistService
@@ -219,6 +221,33 @@ public sealed class ExamWorkflowServiceTests
         public void Save(ConsoleConfiguration configuration)
         {
             Configuration = configuration;
+        }
+    }
+
+    private sealed class InMemoryExamSessionStore : IExamSessionStore
+    {
+        private readonly Dictionary<string, ExamSessionRecord> _sessions = new();
+
+        public void Save(ExamSessionRecord sessionRecord)
+        {
+            _sessions[sessionRecord.SessionId] = sessionRecord;
+        }
+
+        public ExamSessionRecord? GetBySessionId(string sessionId)
+        {
+            return _sessions.TryGetValue(sessionId, out var session) ? session : null;
+        }
+    }
+
+    private sealed class InMemoryPacsSendRecordStore : IPacsSendRecordStore
+    {
+        public void Add(PacsSendRecord sendRecord)
+        {
+        }
+
+        public IReadOnlyList<PacsSendRecord> GetBySessionId(string sessionId)
+        {
+            return Array.Empty<PacsSendRecord>();
         }
     }
 }

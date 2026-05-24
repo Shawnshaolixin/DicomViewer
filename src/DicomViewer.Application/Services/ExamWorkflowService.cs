@@ -18,6 +18,8 @@ public sealed class ExamWorkflowService
     private readonly IPacsStoreService _pacsStoreService;
     private readonly IAuditService _auditService;
     private readonly IConsoleConfigurationStore _consoleConfigurationStore;
+    private readonly IExamSessionStore _examSessionStore;
+    private readonly IPacsSendRecordStore _pacsSendRecordStore;
 
     private IReadOnlyList<ImagingOrder> _orders = Array.Empty<ImagingOrder>();
     private ImagingOrder? _selectedOrder;
@@ -38,7 +40,9 @@ public sealed class ExamWorkflowService
         IExposureSimulationService exposureSimulationService,
         IPacsStoreService pacsStoreService,
         IAuditService auditService,
-        IConsoleConfigurationStore consoleConfigurationStore)
+        IConsoleConfigurationStore consoleConfigurationStore,
+        IExamSessionStore examSessionStore,
+        IPacsSendRecordStore pacsSendRecordStore)
     {
         _worklistService = worklistService;
         _interlockService = interlockService;
@@ -46,6 +50,8 @@ public sealed class ExamWorkflowService
         _pacsStoreService = pacsStoreService;
         _auditService = auditService;
         _consoleConfigurationStore = consoleConfigurationStore;
+        _examSessionStore = examSessionStore;
+        _pacsSendRecordStore = pacsSendRecordStore;
     }
 
     /// <summary>
@@ -109,6 +115,7 @@ public sealed class ExamWorkflowService
 
         _statusText = "已创建检查会话";
         _notesText = $"当前任务: {_selectedOrder.PatientName} / {_selectedOrder.ProcedureDescription}";
+        PersistSession();
         _auditService.Record($"选择检查任务: {_selectedOrder.OrderId}");
         return RunInterlockCheck();
     }
@@ -240,6 +247,8 @@ public sealed class ExamWorkflowService
             _auditService.Record($"联锁检查失败: {_notesText}");
         }
 
+        PersistSession();
+
         return BuildSnapshot();
     }
 
@@ -280,6 +289,8 @@ public sealed class ExamWorkflowService
             LastExposureAtUtc = _lastExposureResult.AcquiredAtUtc,
             LastGeneratedArtifact = _lastExposureResult.ArtifactPath,
         };
+
+        PersistSession();
 
         _statusText = "模拟曝光完成";
         _notesText = _lastExposureResult.PreviewText;
@@ -323,6 +334,22 @@ public sealed class ExamWorkflowService
                 WorkflowStatus = _lastPacsStoreResult.IsSuccess ? ExamWorkflowStatus.Completed : ExamWorkflowStatus.Failed,
                 DeviceState = _lastPacsStoreResult.IsSuccess ? DeviceOperationalState.Ready : DeviceOperationalState.Error,
             };
+
+            PersistSession();
+        }
+
+        if (_session is not null)
+        {
+            _pacsSendRecordStore.Add(new PacsSendRecord(
+                _session.SessionId,
+                _lastPacsStoreResult.FilePath,
+                _lastPacsStoreResult.IsSuccess,
+                _lastPacsStoreResult.StatusText,
+                _lastPacsStoreResult.Details,
+                _lastPacsStoreResult.CalledAeTitle,
+                _lastPacsStoreResult.Host,
+                _lastPacsStoreResult.Port,
+                _lastPacsStoreResult.ProcessedAtUtc));
         }
 
         _statusText = _lastPacsStoreResult.StatusText;
@@ -387,5 +414,29 @@ public sealed class ExamWorkflowService
             _auditService.GetEntries().Select(entry => $"{entry.OccurredAtUtc:O} {entry.Message}").ToArray(),
             _lastExposureResult,
             _lastPacsStoreResult);
+    }
+
+    private void PersistSession()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _examSessionStore.Save(new ExamSessionRecord(
+            _session.SessionId,
+            _session.Order.OrderId,
+            _session.Order.PatientId,
+            _session.Order.PatientName,
+            _session.Order.ProcedureDescription,
+            _session.Order.BodyPart,
+            _session.Order.Projection,
+            _session.WorkflowStatus,
+            _session.DeviceState,
+            _session.StartedAtUtc,
+            _session.LastExposureAtUtc,
+            _session.LastGeneratedArtifact,
+            _lastExposureResult?.ImageId,
+            DateTime.UtcNow));
     }
 }
