@@ -4,20 +4,23 @@ using DicomViewer.Infrastructure.Persistence;
 
 namespace DicomViewer.Tests.Infrastructure;
 
-public sealed class JsonConsoleConfigurationStoreTests
+public sealed class SqliteConsoleConfigurationStoreTests
 {
     [Fact]
     public void SaveAndLoad_RoundTripsConsoleConfiguration()
     {
         var tempDirectory = Directory.CreateTempSubdirectory();
-        var filePath = Path.Combine(tempDirectory.FullName, "console-settings.json");
-        var store = new JsonConsoleConfigurationStore(filePath);
+        var databasePath = Path.Combine(tempDirectory.FullName, "dicomviewer.db");
+        var connectionFactory = new SqliteAppDbConnectionFactory(databasePath);
+        var databaseInitializer = new SqliteDatabaseInitializer(connectionFactory);
+        var store = new SqliteConsoleConfigurationStore(connectionFactory);
         var configuration = new ConsoleConfiguration(
             new PacsConfiguration("LOCALAE", "ORTHANC", "127.0.0.1", 4242, @"D:\DicomOutput"),
             new ExposureParameterRange(45, 130, 15, 400, 1, 800, 0.2, 200, 600, 1800));
 
         try
         {
+            databaseInitializer.EnsureCreated();
             store.Save(configuration);
 
             var loaded = store.Load();
@@ -31,14 +34,18 @@ public sealed class JsonConsoleConfigurationStoreTests
     }
 
     [Fact]
-    public void Load_WhenFileMissing_ReturnsDefaultConfiguration()
+    public void Load_WhenDatabaseHasNoConfiguration_ReturnsDefaultConfiguration()
     {
         var tempDirectory = Directory.CreateTempSubdirectory();
-        var filePath = Path.Combine(tempDirectory.FullName, "missing.json");
-        var store = new JsonConsoleConfigurationStore(filePath);
+        var databasePath = Path.Combine(tempDirectory.FullName, "dicomviewer.db");
+        var connectionFactory = new SqliteAppDbConnectionFactory(databasePath);
+        var databaseInitializer = new SqliteDatabaseInitializer(connectionFactory);
+        var store = new SqliteConsoleConfigurationStore(connectionFactory);
 
         try
         {
+            databaseInitializer.EnsureCreated();
+
             var loaded = store.Load();
 
             Assert.Equal(ConsoleConfiguration.Default, loaded);

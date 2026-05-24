@@ -40,11 +40,13 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<IStudyCatalogService, FileSystemStudyCatalogService>();
         containerRegistry.RegisterSingleton<IWorklistService, MockWorklistService>();
         containerRegistry.RegisterSingleton<IInterlockService, DefaultInterlockService>();
-        containerRegistry.RegisterSingleton<IConsoleConfigurationStore, JsonConsoleConfigurationStore>();
+        containerRegistry.RegisterSingleton<IAppDbConnectionFactory, SqliteAppDbConnectionFactory>();
+        containerRegistry.RegisterSingleton<SqliteDatabaseInitializer>();
+        containerRegistry.RegisterSingleton<IConsoleConfigurationStore, SqliteConsoleConfigurationStore>();
         containerRegistry.RegisterSingleton<SimulatedDicomBuilder>();
         containerRegistry.RegisterSingleton<IExposureSimulationService, MockExposureSimulationService>();
         containerRegistry.RegisterSingleton<IPacsStoreService, OrthancStoreService>();
-        containerRegistry.RegisterSingleton<IAuditService, InMemoryAuditService>();
+        containerRegistry.RegisterSingleton<IAuditService, SqliteAuditService>();
         containerRegistry.RegisterSingleton<IImageRenderService, PlaceholderRenderService>();
         containerRegistry.RegisterSingleton<IViewportImageService, DicomViewportImageService>();
         containerRegistry.RegisterSingleton<WorkspaceService>();
@@ -73,6 +75,7 @@ public partial class App : PrismApplication
     /// </summary>
     protected override void OnInitialized()
     {
+        Container.Resolve<SqliteDatabaseInitializer>().EnsureCreated();
         base.OnInitialized();
     }
 }
