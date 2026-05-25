@@ -40,6 +40,14 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private string _pacsPortText = PacsConfiguration.Default.Port.ToString();
     private string _restApiPortText = PacsConfiguration.Default.RestApiPort.ToString();
     private string _outputDirectoryText = PacsConfiguration.Default.OutputDirectory;
+    private string _localStoreHostText = PacsConfiguration.Default.LocalStoreHost;
+    private string _localStorePortText = PacsConfiguration.Default.LocalStorePort.ToString();
+    private string _remoteQueryPatientNameText = string.Empty;
+    private string _remoteQueryPatientIdText = string.Empty;
+    private string _remoteQueryStudyDescriptionText = string.Empty;
+    private string _remoteQueryModalityText = string.Empty;
+    private string _remoteQueryStudyDateFromText = string.Empty;
+    private string _remoteQueryStudyDateToText = string.Empty;
     private string _kilovoltagePeakText = ExposureParameters.Default.KilovoltagePeak.ToString("0.#");
     private string _tubeCurrentMilliampereText = ExposureParameters.Default.TubeCurrentMilliampere.ToString("0.#");
     private string _exposureTimeMillisecondsText = ExposureParameters.Default.ExposureTimeMilliseconds.ToString("0.#");
@@ -78,7 +86,9 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         ExecuteExposureCommand = new DelegateCommand(async () => await ExecuteExposureAsync()).ObservesCanExecute(() => CanExecuteExposure);
         SendToPacsCommand = new DelegateCommand(async () => await SendToPacsAsync()).ObservesCanExecute(() => CanSendToPacs);
         QueryPacsStudiesCommand = new DelegateCommand(async () => await QueryPacsStudiesAsync());
+        QueryPacsStudiesViaDicomCommand = new DelegateCommand(async () => await QueryPacsStudiesViaDicomAsync());
         RetrieveRemoteStudyCommand = new DelegateCommand(async () => await RetrieveRemoteStudyAsync()).ObservesCanExecute(() => CanRetrieveRemoteStudy);
+        RetrieveRemoteStudyViaDicomCommand = new DelegateCommand(async () => await RetrieveRemoteStudyViaDicomAsync()).ObservesCanExecute(() => CanRetrieveRemoteStudyViaDicom);
         ReviewExposureCommand = new DelegateCommand(ReviewExposure).ObservesCanExecute(() => CanReviewExposure);
         ReviewHistoryCommand = new DelegateCommand(ReviewHistory).ObservesCanExecute(() => CanReviewHistory);
         VerifyPacsConnectionCommand = new DelegateCommand(async () => await VerifyPacsConnectionAsync());
@@ -109,6 +119,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     public bool CanReviewHistory => SelectedHistoryItem is not null && !string.IsNullOrWhiteSpace(SelectedHistoryItem.ArtifactPath);
 
     public bool CanRetrieveRemoteStudy => SelectedRemoteStudy is not null;
+
+    public bool CanRetrieveRemoteStudyViaDicom => SelectedRemoteStudy is not null && !string.IsNullOrWhiteSpace(SelectedRemoteStudy.StudyInstanceUid);
 
     public WorklistItem? SelectedWorklistItem
     {
@@ -148,6 +160,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             if (SetProperty(ref _selectedRemoteStudy, value))
             {
                 RaisePropertyChanged(nameof(CanRetrieveRemoteStudy));
+                RaisePropertyChanged(nameof(CanRetrieveRemoteStudyViaDicom));
             }
         }
     }
@@ -267,6 +280,54 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     {
         get => _outputDirectoryText;
         set => SetProperty(ref _outputDirectoryText, value);
+    }
+
+    public string LocalStoreHostText
+    {
+        get => _localStoreHostText;
+        set => SetProperty(ref _localStoreHostText, value);
+    }
+
+    public string LocalStorePortText
+    {
+        get => _localStorePortText;
+        set => SetProperty(ref _localStorePortText, value);
+    }
+
+    public string RemoteQueryPatientNameText
+    {
+        get => _remoteQueryPatientNameText;
+        set => SetProperty(ref _remoteQueryPatientNameText, value);
+    }
+
+    public string RemoteQueryPatientIdText
+    {
+        get => _remoteQueryPatientIdText;
+        set => SetProperty(ref _remoteQueryPatientIdText, value);
+    }
+
+    public string RemoteQueryStudyDescriptionText
+    {
+        get => _remoteQueryStudyDescriptionText;
+        set => SetProperty(ref _remoteQueryStudyDescriptionText, value);
+    }
+
+    public string RemoteQueryModalityText
+    {
+        get => _remoteQueryModalityText;
+        set => SetProperty(ref _remoteQueryModalityText, value);
+    }
+
+    public string RemoteQueryStudyDateFromText
+    {
+        get => _remoteQueryStudyDateFromText;
+        set => SetProperty(ref _remoteQueryStudyDateFromText, value);
+    }
+
+    public string RemoteQueryStudyDateToText
+    {
+        get => _remoteQueryStudyDateToText;
+        set => SetProperty(ref _remoteQueryStudyDateToText, value);
     }
 
     public string KilovoltagePeakText
@@ -411,7 +472,11 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 
     public DelegateCommand QueryPacsStudiesCommand { get; }
 
+    public DelegateCommand QueryPacsStudiesViaDicomCommand { get; }
+
     public DelegateCommand RetrieveRemoteStudyCommand { get; }
+
+    public DelegateCommand RetrieveRemoteStudyViaDicomCommand { get; }
 
     public DelegateCommand ReviewExposureCommand { get; }
 
@@ -501,18 +566,43 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private async Task QueryPacsStudiesAsync()
     {
         ApplyPacsConfiguration();
-        ApplyConsoleSnapshot(await _examWorkflowService.QueryPacsStudiesAsync());
+        ApplyConsoleSnapshot(await _examWorkflowService.QueryPacsStudiesAsync(BuildPacsStudyQueryCriteria()));
+    }
+
+    private async Task QueryPacsStudiesViaDicomAsync()
+    {
+        ApplyPacsConfiguration();
+        ApplyConsoleSnapshot(await _examWorkflowService.QueryPacsStudiesViaDicomAsync(BuildPacsStudyQueryCriteria()));
     }
 
     private async Task RetrieveRemoteStudyAsync()
     {
-        if (SelectedRemoteStudy is null)
+        var selectedRemoteStudy = SelectedRemoteStudy;
+        if (selectedRemoteStudy is null)
         {
             return;
         }
 
         ApplyPacsConfiguration();
-        var result = await _examWorkflowService.RetrievePacsStudyAsync(SelectedRemoteStudy.RemoteStudyId);
+        var result = await _examWorkflowService.RetrievePacsStudyAsync(selectedRemoteStudy.RemoteStudyId);
+        ApplyConsoleSnapshot(result.Snapshot);
+
+        if (!string.IsNullOrWhiteSpace(result.ImportedDirectoryPath))
+        {
+            NavigateToViewerDirectory(result.ImportedDirectoryPath);
+        }
+    }
+
+    private async Task RetrieveRemoteStudyViaDicomAsync()
+    {
+        var selectedRemoteStudy = SelectedRemoteStudy;
+        if (selectedRemoteStudy is null || string.IsNullOrWhiteSpace(selectedRemoteStudy.StudyInstanceUid))
+        {
+            return;
+        }
+
+        ApplyPacsConfiguration();
+        var result = await _examWorkflowService.RetrievePacsStudyViaDicomAsync(selectedRemoteStudy.StudyInstanceUid);
         ApplyConsoleSnapshot(result.Snapshot);
 
         if (!string.IsNullOrWhiteSpace(result.ImportedDirectoryPath))
@@ -629,7 +719,20 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             string.IsNullOrWhiteSpace(PacsHostText) ? PacsConfiguration.Default.Host : PacsHostText.Trim(),
             int.TryParse(PacsPortText, out var port) ? port : PacsConfiguration.Default.Port,
             int.TryParse(RestApiPortText, out var restApiPort) ? restApiPort : PacsConfiguration.Default.RestApiPort,
-            string.IsNullOrWhiteSpace(OutputDirectoryText) ? PacsConfiguration.Default.OutputDirectory : OutputDirectoryText.Trim());
+            string.IsNullOrWhiteSpace(OutputDirectoryText) ? PacsConfiguration.Default.OutputDirectory : OutputDirectoryText.Trim(),
+            string.IsNullOrWhiteSpace(LocalStoreHostText) ? PacsConfiguration.Default.LocalStoreHost : LocalStoreHostText.Trim(),
+            int.TryParse(LocalStorePortText, out var localStorePort) ? localStorePort : PacsConfiguration.Default.LocalStorePort);
+    }
+
+    private PacsStudyQueryCriteria BuildPacsStudyQueryCriteria()
+    {
+        return new PacsStudyQueryCriteria(
+            RemoteQueryPatientNameText.Trim(),
+            RemoteQueryPatientIdText.Trim(),
+            RemoteQueryStudyDescriptionText.Trim(),
+            RemoteQueryModalityText.Trim().ToUpperInvariant(),
+            ParseDateOrNull(RemoteQueryStudyDateFromText),
+            ParseDateOrNull(RemoteQueryStudyDateToText));
     }
 
             /// <summary>
@@ -680,6 +783,8 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         PacsPortText = snapshot.PacsConfiguration.Port.ToString();
         RestApiPortText = snapshot.PacsConfiguration.RestApiPort.ToString();
         OutputDirectoryText = snapshot.PacsConfiguration.OutputDirectory;
+        LocalStoreHostText = snapshot.PacsConfiguration.LocalStoreHost;
+        LocalStorePortText = snapshot.PacsConfiguration.LocalStorePort.ToString();
 
         KilovoltagePeakText = snapshot.ExposureParameters.KilovoltagePeak.ToString("0.#");
         TubeCurrentMilliampereText = snapshot.ExposureParameters.TubeCurrentMilliampere.ToString("0.#");
@@ -720,6 +825,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         RaisePropertyChanged(nameof(CanReviewExposure));
         RaisePropertyChanged(nameof(CanReviewHistory));
         RaisePropertyChanged(nameof(CanRetrieveRemoteStudy));
+        RaisePropertyChanged(nameof(CanRetrieveRemoteStudyViaDicom));
     }
 
     /// <summary>
@@ -728,6 +834,27 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private static double ParseDoubleOrFallback(string text, double fallback)
     {
         return double.TryParse(text, out var value) ? value : fallback;
+    }
+
+    private static DateTime? ParseDateOrNull(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var trimmed = text.Trim();
+        if (DateTime.TryParse(trimmed, out var parsed))
+        {
+            return parsed.Date;
+        }
+
+        if (trimmed.Length == 8 && DateTime.TryParseExact(trimmed, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out parsed))
+        {
+            return parsed.Date;
+        }
+
+        return null;
     }
 
     /// <summary>

@@ -15,7 +15,7 @@ public sealed class SqliteConsoleConfigurationStoreTests
         var databaseInitializer = new SqliteDatabaseInitializer(connectionFactory);
         var store = new SqliteConsoleConfigurationStore(connectionFactory);
         var configuration = new ConsoleConfiguration(
-            new PacsConfiguration("LOCALAE", "ORTHANC", "127.0.0.1", 4242, 8042, @"D:\DicomOutput"),
+            new PacsConfiguration("LOCALAE", "ORTHANC", "127.0.0.1", 4242, 8042, @"D:\DicomOutput", "127.0.0.1", 11113),
             new ExposureParameterRange(45, 130, 15, 400, 1, 800, 0.2, 200, 600, 1800));
 
         try

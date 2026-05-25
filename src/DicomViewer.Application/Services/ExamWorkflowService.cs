@@ -379,17 +379,34 @@ public sealed class ExamWorkflowService
     /// <summary>
     /// 查询 Orthanc 中最近的检查列表。
     /// </summary>
-    public async Task<ConsoleSnapshot> QueryPacsStudiesAsync(CancellationToken cancellationToken = default)
+    public async Task<ConsoleSnapshot> QueryPacsStudiesAsync(PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
     {
         _statusText = "正在查询 PACS 检查";
         _notesText = $"使用 Orthanc REST 查询 {_pacsConfiguration.Host}:{_pacsConfiguration.RestApiPort}";
         _auditService.Record("PACS 查询开始");
 
-        var queryResult = await _pacsStoreService.QueryStudiesAsync(_pacsConfiguration, cancellationToken);
+        var queryResult = await _pacsStoreService.QueryStudiesAsync(_pacsConfiguration, criteria, cancellationToken);
         _remoteStudies = queryResult.Studies;
         _statusText = queryResult.StatusText;
         _notesText = queryResult.Details;
         _auditService.Record($"PACS 查询{(queryResult.IsSuccess ? "成功" : "失败")}: {queryResult.Details}");
+        return BuildSnapshot();
+    }
+
+    /// <summary>
+    /// 使用标准 DICOM C-FIND 查询远端检查。
+    /// </summary>
+    public async Task<ConsoleSnapshot> QueryPacsStudiesViaDicomAsync(PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
+    {
+        _statusText = "正在执行 C-FIND 查询";
+        _notesText = $"使用 DICOM 查询 {_pacsConfiguration.Host}:{_pacsConfiguration.Port}";
+        _auditService.Record("C-FIND 查询开始");
+
+        var queryResult = await _pacsStoreService.QueryStudiesViaDicomAsync(_pacsConfiguration, criteria, cancellationToken);
+        _remoteStudies = queryResult.Studies;
+        _statusText = queryResult.StatusText;
+        _notesText = queryResult.Details;
+        _auditService.Record($"C-FIND 查询{(queryResult.IsSuccess ? "成功" : "失败")}: {queryResult.Details}");
         return BuildSnapshot();
     }
 
@@ -416,6 +433,36 @@ public sealed class ExamWorkflowService
         _notesText = retrieveResult.Details;
         _auditService.Record($"PACS 回取{(retrieveResult.IsSuccess ? "成功" : "失败")}: {retrieveResult.Details}");
         return (BuildSnapshot(), retrieveResult.IsSuccess ? retrieveResult.ImportedDirectoryPath : null);
+    }
+
+    /// <summary>
+    /// 使用标准 DICOM C-MOVE 将远端检查推送到本地接收端。
+    /// </summary>
+    public async Task<(ConsoleSnapshot Snapshot, string? ImportedDirectoryPath)> RetrievePacsStudyViaDicomAsync(string studyInstanceUid, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(studyInstanceUid))
+        {
+            _statusText = "C-MOVE 回取失败";
+            _notesText = "未选择可回取的远端检查。";
+            _auditService.Record("C-MOVE 回取失败: 未选择远端检查");
+            return (BuildSnapshot(), null);
+        }
+
+        var targetDirectory = Path.Combine(_pacsConfiguration.OutputDirectory, "dicom-move", SanitizePathSegment(studyInstanceUid));
+        _statusText = "正在执行 C-MOVE 回取";
+        _notesText = $"接收到 {targetDirectory}";
+        _auditService.Record($"C-MOVE 回取开始: {studyInstanceUid}");
+
+        var retrieveResult = await _pacsStoreService.RetrieveStudyViaDicomAsync(studyInstanceUid, targetDirectory, _pacsConfiguration, cancellationToken);
+        _statusText = retrieveResult.StatusText;
+        _notesText = retrieveResult.Details;
+        _auditService.Record($"C-MOVE 回取{(retrieveResult.IsSuccess ? "成功" : "失败")}: {retrieveResult.Details}");
+        return (BuildSnapshot(), retrieveResult.IsSuccess ? retrieveResult.ImportedDirectoryPath : null);
+    }
+
+    private static string SanitizePathSegment(string value)
+    {
+        return string.Join("_", value.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
     }
 
     /// <summary>

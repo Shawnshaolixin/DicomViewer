@@ -62,6 +62,7 @@
                         <Button Content="回看结果" Command="{Binding ReviewExposureCommand}" />
                         <Button Content="验证连接" Command="{Binding VerifyPacsConnectionCommand}" />
                         <Button Content="查询 PACS" Command="{Binding QueryPacsStudiesCommand}" />
+                        <Button Content="C-FIND" Command="{Binding QueryPacsStudiesViaDicomCommand}" />
                         <Button Content="发送 PACS" Command="{Binding SendToPacsCommand}" />
                     </StackPanel>
                 </DockPanel>
@@ -171,6 +172,16 @@
                         </UniformGrid>
                         <TextBlock Text="Orthanc REST Port" Foreground="#9FB0BC" />
                         <TextBox Text="{Binding RestApiPortText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" Margin="0,0,0,8" />
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="本地接收 Host" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding LocalStoreHostText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="本地接收 Port" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding LocalStorePortText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
                         <TextBlock Text="输出目录" Foreground="#9FB0BC" />
                         <TextBox Text="{Binding OutputDirectoryText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
                         <Button Content="应用 PACS 配置" Command="{Binding ApplyPacsConfigurationCommand}" Margin="0,12,0,0" />
@@ -181,8 +192,41 @@
                     <StackPanel>
                         <DockPanel>
                             <TextBlock Text="Orthanc 查询与回取" FontSize="18" FontWeight="SemiBold" />
-                            <Button Content="回取选中检查" Command="{Binding RetrieveRemoteStudyCommand}" DockPanel.Dock="Right" Margin="8,0,0,0" />
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="REST 回取" Command="{Binding RetrieveRemoteStudyCommand}" Margin="8,0,0,0" />
+                                <Button Content="C-MOVE 回取" Command="{Binding RetrieveRemoteStudyViaDicomCommand}" Margin="8,0,0,0" />
+                            </StackPanel>
                         </DockPanel>
+                        <UniformGrid Columns="2" Margin="0,12,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="患者姓名" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding RemoteQueryPatientNameText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="患者 ID" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding RemoteQueryPatientIdText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="检查描述" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding RemoteQueryStudyDescriptionText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Modality" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding RemoteQueryModalityText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
+                        <UniformGrid Columns="2" Margin="0,0,0,8">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="检查日期起" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding RemoteQueryStudyDateFromText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="检查日期止" Foreground="#9FB0BC" />
+                                <TextBox Text="{Binding RemoteQueryStudyDateToText, UpdateSourceTrigger=PropertyChanged}" MinWidth="0" />
+                            </StackPanel>
+                        </UniformGrid>
                         <ListBox ItemsSource="{Binding RemoteStudies}"
                                  SelectedItem="{Binding SelectedRemoteStudy}"
                                  Background="#10171E"

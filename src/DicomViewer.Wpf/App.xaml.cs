@@ -47,6 +47,7 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<IPacsSendRecordStore, SqlitePacsSendRecordStore>();
         containerRegistry.RegisterSingleton<SimulatedDicomBuilder>();
         containerRegistry.RegisterSingleton<IExposureSimulationService, MockExposureSimulationService>();
+        containerRegistry.RegisterSingleton<ILocalDicomStoreScpService, LocalDicomStoreScpService>();
         containerRegistry.RegisterSingleton<IPacsStoreService, OrthancStoreService>();
         containerRegistry.RegisterSingleton<IAuditService, SqliteAuditService>();
         containerRegistry.RegisterSingleton<IImageRenderService, PlaceholderRenderService>();

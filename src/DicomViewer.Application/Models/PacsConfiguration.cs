@@ -6,7 +6,9 @@ public sealed record PacsConfiguration(
     string Host,
     int Port,
     int RestApiPort,
-    string OutputDirectory)
+    string OutputDirectory,
+    string LocalStoreHost = "127.0.0.1",
+    int LocalStorePort = 11113)
 {
     public static PacsConfiguration Default { get; } = new(
         "DICOMVIEWER",
@@ -14,5 +16,7 @@ public sealed record PacsConfiguration(
         "127.0.0.1",
         4242,
         8042,
-        Path.Combine(AppContext.BaseDirectory, "simulated-output"));
+        Path.Combine(AppContext.BaseDirectory, "simulated-output"),
+        "127.0.0.1",
+        11113);
 }

@@ -58,11 +58,23 @@ public sealed class ExamWorkflowPacsTests
     {
         var service = CreateService(new SuccessfulPacsStoreService());
 
-        var snapshot = await service.QueryPacsStudiesAsync();
+        var snapshot = await service.QueryPacsStudiesAsync(PacsStudyQueryCriteria.Empty);
 
         Assert.Equal("PACS 查询成功", snapshot.StatusText);
         Assert.Single(snapshot.RemoteStudies);
         Assert.Equal("REMOTE-1", snapshot.RemoteStudies[0].RemoteStudyId);
+    }
+
+    [Fact]
+    public async Task QueryPacsStudiesViaDicomAsync_LoadsRemoteStudiesIntoSnapshot()
+    {
+        var service = CreateService(new SuccessfulPacsStoreService());
+
+        var snapshot = await service.QueryPacsStudiesViaDicomAsync(PacsStudyQueryCriteria.Empty);
+
+        Assert.Equal("C-FIND 查询成功", snapshot.StatusText);
+        Assert.Single(snapshot.RemoteStudies);
+        Assert.Equal("1.2.3", snapshot.RemoteStudies[0].StudyInstanceUid);
     }
 
     [Fact]
@@ -74,6 +86,17 @@ public sealed class ExamWorkflowPacsTests
 
         Assert.Equal("PACS 回取成功", result.Snapshot.StatusText);
         Assert.EndsWith(Path.Combine("retrieved", "REMOTE-1"), result.ImportedDirectoryPath);
+    }
+
+    [Fact]
+    public async Task RetrievePacsStudyViaDicomAsync_ReturnsImportedDirectoryPath()
+    {
+        var service = CreateService(new SuccessfulPacsStoreService());
+
+        var result = await service.RetrievePacsStudyViaDicomAsync("1.2.3");
+
+        Assert.Equal("C-MOVE 回取成功", result.Snapshot.StatusText);
+        Assert.EndsWith(Path.Combine("dicom-move", "1.2.3"), result.ImportedDirectoryPath);
     }
 
     private static ExamWorkflowService CreateService(IPacsStoreService pacsStoreService)
@@ -152,7 +175,7 @@ public sealed class ExamWorkflowPacsTests
                 DateTime.UtcNow));
         }
 
-        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
         {
             IReadOnlyList<PacsRemoteStudy> studies =
             [
@@ -165,6 +188,21 @@ public sealed class ExamWorkflowPacsTests
         public Task<PacsRetrieveResult> RetrieveStudyAsync(string remoteStudyId, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new PacsRetrieveResult(true, "PACS 回取成功", $"已下载到 {targetDirectory}", targetDirectory, DateTime.UtcNow));
+        }
+
+        public Task<PacsStudyQueryResult> QueryStudiesViaDicomAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<PacsRemoteStudy> studies =
+            [
+                new PacsRemoteStudy(string.Empty, "1.2.3", "P-1", "Demo Patient", "Chest PA", "DX", 1, new DateTime(2026, 5, 23, 0, 0, 0, DateTimeKind.Utc)),
+            ];
+
+            return Task.FromResult(new PacsStudyQueryResult(true, "C-FIND 查询成功", "共查询到 1 条远端检查。", studies, DateTime.UtcNow));
+        }
+
+        public Task<PacsRetrieveResult> RetrieveStudyViaDicomAsync(string studyInstanceUid, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsRetrieveResult(true, "C-MOVE 回取成功", $"已接收到 {targetDirectory}", targetDirectory, DateTime.UtcNow));
         }
     }
 

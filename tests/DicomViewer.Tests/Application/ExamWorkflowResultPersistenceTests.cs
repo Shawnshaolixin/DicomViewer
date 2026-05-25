@@ -138,12 +138,22 @@ public sealed class ExamWorkflowResultPersistenceTests
             return Task.FromResult(new PacsStoreResult(true, "PACS 发送成功", "Orthanc 已确认接收。", configuration.CalledAeTitle, configuration.Host, configuration.Port, dicomFilePath, DateTime.UtcNow));
         }
 
-        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new PacsStudyQueryResult(true, "ok", "ok", Array.Empty<PacsRemoteStudy>(), DateTime.UtcNow));
         }
 
         public Task<PacsRetrieveResult> RetrieveStudyAsync(string remoteStudyId, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsRetrieveResult(true, "ok", "ok", targetDirectory, DateTime.UtcNow));
+        }
+
+        public Task<PacsStudyQueryResult> QueryStudiesViaDicomAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsStudyQueryResult(true, "ok", "ok", Array.Empty<PacsRemoteStudy>(), DateTime.UtcNow));
+        }
+
+        public Task<PacsRetrieveResult> RetrieveStudyViaDicomAsync(string studyInstanceUid, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new PacsRetrieveResult(true, "ok", "ok", targetDirectory, DateTime.UtcNow));
         }

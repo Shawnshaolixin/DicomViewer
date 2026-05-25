@@ -1,5 +1,6 @@
 using DicomViewer.Application.Abstractions;
 using DicomViewer.Application.Models;
+using FellowOakDicom;
 using FellowOakDicom.Network;
 using FellowOakDicom.Network.Client;
 using System.Net.Http.Json;
@@ -14,6 +15,12 @@ namespace DicomViewer.Infrastructure.Pacs;
 public sealed class OrthancStoreService : IPacsStoreService
 {
     private const int QueryLimit = 20;
+    private readonly ILocalDicomStoreScpService _localDicomStoreScpService;
+
+    public OrthancStoreService(ILocalDicomStoreScpService localDicomStoreScpService)
+    {
+        _localDicomStoreScpService = localDicomStoreScpService;
+    }
 
     /// <summary>
     /// 发送 C-ECHO 请求，验证远端 PACS AE 是否可达。
@@ -142,7 +149,7 @@ public sealed class OrthancStoreService : IPacsStoreService
         }
     }
 
-    public async Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+    public async Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -153,7 +160,7 @@ public sealed class OrthancStoreService : IPacsStoreService
                     "Study",
                     QueryLimit,
                     true,
-                    new Dictionary<string, string>(),
+                    BuildOrthancQuery(criteria),
                     [
                         "StudyDate",
                         "StudyInstanceUID",
@@ -165,7 +172,15 @@ public sealed class OrthancStoreService : IPacsStoreService
                     ]),
                 cancellationToken);
 
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                var errorMessage = string.IsNullOrWhiteSpace(errorContent)
+                    ? $"Orthanc 查询失败，HTTP {(int)response.StatusCode} ({response.ReasonPhrase})。"
+                    : $"Orthanc 查询失败，HTTP {(int)response.StatusCode} ({response.ReasonPhrase})：{errorContent}";
+
+                throw new HttpRequestException(errorMessage, null, response.StatusCode);
+            }
 
             var studies = await response.Content.ReadFromJsonAsync<IReadOnlyList<OrthancStudySearchResponse>>(cancellationToken: cancellationToken)
                 ?? Array.Empty<OrthancStudySearchResponse>();
@@ -238,6 +253,106 @@ public sealed class OrthancStoreService : IPacsStoreService
         }
     }
 
+    public async Task<PacsStudyQueryResult> QueryStudiesViaDicomAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var client = DicomClientFactory.Create(
+                configuration.Host,
+                configuration.Port,
+                false,
+                configuration.CallingAeTitle,
+                configuration.CalledAeTitle);
+
+            var studies = new List<PacsRemoteStudy>();
+            var request = BuildDicomFindRequest(criteria);
+            request.OnResponseReceived += (_, response) =>
+            {
+                if (response.Status is null || response.Status.State != DicomState.Pending || response.Dataset is null)
+                {
+                    return;
+                }
+
+                studies.Add(MapDicomFindStudy(response.Dataset));
+            };
+
+            await client.AddRequestAsync(request);
+            await client.SendAsync(cancellationToken, DicomClientCancellationMode.ImmediatelyReleaseAssociation);
+
+            var result = studies
+                .OrderByDescending(study => study.StudyDateUtc)
+                .ToArray();
+
+            return new PacsStudyQueryResult(
+                true,
+                "C-FIND 查询成功",
+                result.Length == 0 ? "未查询到符合条件的远端检查。" : $"共查询到 {result.Length} 条远端检查。",
+                result,
+                DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new PacsStudyQueryResult(false, "C-FIND 查询失败", ex.Message, Array.Empty<PacsRemoteStudy>(), DateTime.UtcNow);
+        }
+    }
+
+    public async Task<PacsRetrieveResult> RetrieveStudyViaDicomAsync(string studyInstanceUid, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(studyInstanceUid))
+        {
+            return new PacsRetrieveResult(false, "C-MOVE 回取失败", "StudyInstanceUID 为空。", string.Empty, DateTime.UtcNow);
+        }
+
+        try
+        {
+            var receiveSession = _localDicomStoreScpService.PrepareReceive(configuration, targetDirectory);
+            await RegisterMoveDestinationAsync(configuration, cancellationToken);
+
+            var client = DicomClientFactory.Create(
+                configuration.Host,
+                configuration.Port,
+                false,
+                configuration.CallingAeTitle,
+                configuration.CalledAeTitle);
+
+            PacsRetrieveResult? retrieveResult = null;
+            var request = new DicomCMoveRequest(configuration.CallingAeTitle, studyInstanceUid, DicomPriority.Medium);
+            request.OnResponseReceived += (_, response) =>
+            {
+                if (response.Status is null || response.Status.State == DicomState.Pending)
+                {
+                    return;
+                }
+
+                var isSuccess = response.Status.State == DicomState.Success && receiveSession.ReceivedFiles.Count > 0;
+                retrieveResult = new PacsRetrieveResult(
+                    isSuccess,
+                    isSuccess ? "C-MOVE 回取成功" : "C-MOVE 回取失败",
+                    isSuccess
+                        ? $"已接收 {receiveSession.ReceivedFiles.Count} 个实例到 {targetDirectory}"
+                        : response.Status.Description ?? response.Status.ToString(),
+                    isSuccess ? targetDirectory : string.Empty,
+                    DateTime.UtcNow);
+            };
+
+            await client.AddRequestAsync(request);
+            await client.SendAsync(cancellationToken, DicomClientCancellationMode.ImmediatelyReleaseAssociation);
+
+            return retrieveResult ?? new PacsRetrieveResult(
+                receiveSession.ReceivedFiles.Count > 0,
+                receiveSession.ReceivedFiles.Count > 0 ? "C-MOVE 回取成功" : "C-MOVE 回取失败",
+                receiveSession.ReceivedFiles.Count > 0
+                    ? $"已接收 {receiveSession.ReceivedFiles.Count} 个实例到 {targetDirectory}"
+                    : "未收到 C-MOVE 终态响应。",
+                receiveSession.ReceivedFiles.Count > 0 ? targetDirectory : string.Empty,
+                DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            return new PacsRetrieveResult(false, "C-MOVE 回取失败", ex.Message, string.Empty, DateTime.UtcNow);
+        }
+    }
+
     private static HttpClient CreateOrthancHttpClient(PacsConfiguration configuration)
     {
         return new HttpClient
@@ -283,6 +398,105 @@ public sealed class OrthancStoreService : IPacsStoreService
             ParseStudyDate(studyDateText));
     }
 
+    private static Dictionary<string, string> BuildOrthancQuery(PacsStudyQueryCriteria criteria)
+    {
+        var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        AddQueryValue(query, "PatientName", criteria.PatientName);
+        AddQueryValue(query, "PatientID", criteria.PatientId);
+        AddQueryValue(query, "StudyDescription", criteria.StudyDescription);
+        AddQueryValue(query, "ModalitiesInStudy", criteria.Modality);
+
+        var studyDateRange = BuildStudyDateRange(criteria.StudyDateFromUtc, criteria.StudyDateToUtc);
+        if (!string.IsNullOrWhiteSpace(studyDateRange))
+        {
+            query["StudyDate"] = studyDateRange;
+        }
+
+        return query;
+    }
+
+    private static DicomCFindRequest BuildDicomFindRequest(PacsStudyQueryCriteria criteria)
+    {
+        var request = DicomCFindRequest.CreateStudyQuery(
+            string.IsNullOrWhiteSpace(criteria.PatientId) ? string.Empty : criteria.PatientId,
+            string.IsNullOrWhiteSpace(criteria.PatientName) ? string.Empty : criteria.PatientName,
+            BuildDicomDateRange(criteria),
+            string.Empty,
+            string.IsNullOrWhiteSpace(criteria.StudyDescription) ? string.Empty : criteria.StudyDescription,
+            string.Empty,
+            string.Empty);
+
+        request.Dataset.AddOrUpdate(DicomTag.ModalitiesInStudy, string.IsNullOrWhiteSpace(criteria.Modality) ? string.Empty : criteria.Modality);
+        return request;
+    }
+
+    private static DicomDateRange? BuildDicomDateRange(PacsStudyQueryCriteria criteria)
+    {
+        if (criteria.StudyDateFromUtc is null && criteria.StudyDateToUtc is null)
+        {
+            return null;
+        }
+
+        var from = criteria.StudyDateFromUtc ?? DateTime.MinValue;
+        var to = criteria.StudyDateToUtc ?? DateTime.MaxValue;
+        return new DicomDateRange(from, to);
+    }
+
+    private static PacsRemoteStudy MapDicomFindStudy(DicomDataset dataset)
+    {
+        return new PacsRemoteStudy(
+            string.Empty,
+            GetString(dataset, DicomTag.StudyInstanceUID),
+            GetString(dataset, DicomTag.PatientID),
+            GetString(dataset, DicomTag.PatientName),
+            string.IsNullOrWhiteSpace(GetString(dataset, DicomTag.StudyDescription)) ? "未命名检查" : GetString(dataset, DicomTag.StudyDescription),
+            string.IsNullOrWhiteSpace(GetString(dataset, DicomTag.ModalitiesInStudy)) ? "OT" : GetString(dataset, DicomTag.ModalitiesInStudy),
+            GetInt(dataset, DicomTag.NumberOfStudyRelatedInstances),
+            ParseStudyDate(GetString(dataset, DicomTag.StudyDate)));
+    }
+
+    private static string GetString(DicomDataset dataset, DicomTag tag)
+    {
+        return dataset.TryGetSingleValue(tag, out string? value) ? value ?? string.Empty : string.Empty;
+    }
+
+    private static int GetInt(DicomDataset dataset, DicomTag tag)
+    {
+        return dataset.TryGetSingleValue(tag, out int value) ? value : 0;
+    }
+
+    private static async Task RegisterMoveDestinationAsync(PacsConfiguration configuration, CancellationToken cancellationToken)
+    {
+        using var httpClient = CreateOrthancHttpClient(configuration);
+        using var response = await httpClient.PutAsJsonAsync(
+            $"modalities/{Uri.EscapeDataString(configuration.CallingAeTitle)}",
+            new object[] { configuration.CallingAeTitle, configuration.LocalStoreHost, configuration.LocalStorePort },
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    private static void AddQueryValue(IDictionary<string, string> query, string key, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query[key] = value.Trim();
+        }
+    }
+
+    private static string BuildStudyDateRange(DateTime? studyDateFromUtc, DateTime? studyDateToUtc)
+    {
+        if (studyDateFromUtc is null && studyDateToUtc is null)
+        {
+            return string.Empty;
+        }
+
+        var from = studyDateFromUtc?.ToString("yyyyMMdd") ?? string.Empty;
+        var to = studyDateToUtc?.ToString("yyyyMMdd") ?? string.Empty;
+        return $"{from}-{to}";
+    }
+
     private static DateTime? ParseStudyDate(string? studyDateText)
     {
         if (string.IsNullOrWhiteSpace(studyDateText) || studyDateText.Length != 8)
@@ -301,11 +515,11 @@ public sealed class OrthancStoreService : IPacsStoreService
     }
 
     private sealed record OrthancFindRequest(
-        string Level,
-        int Limit,
-        bool Expand,
-        Dictionary<string, string> Query,
-        string[] RequestedTags);
+        [property: JsonPropertyName("Level")] string Level,
+        [property: JsonPropertyName("Limit")] int Limit,
+        [property: JsonPropertyName("Expand")] bool Expand,
+        [property: JsonPropertyName("Query")] Dictionary<string, string> Query,
+        [property: JsonPropertyName("RequestedTags")] string[] RequestedTags);
 
     private sealed class OrthancStudySearchResponse
     {

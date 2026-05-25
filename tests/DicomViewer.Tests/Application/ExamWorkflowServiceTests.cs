@@ -208,7 +208,7 @@ public sealed class ExamWorkflowServiceTests
                 DateTime.UtcNow));
         }
 
-        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        public Task<PacsStudyQueryResult> QueryStudiesAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new PacsStudyQueryResult(true, "PACS 查询成功", "测试替身未执行真实查询。", Array.Empty<PacsRemoteStudy>(), DateTime.UtcNow));
         }
@@ -216,6 +216,16 @@ public sealed class ExamWorkflowServiceTests
         public Task<PacsRetrieveResult> RetrieveStudyAsync(string remoteStudyId, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new PacsRetrieveResult(true, "PACS 回取成功", "测试替身未执行真实回取。", targetDirectory, DateTime.UtcNow));
+        }
+
+        public Task<PacsStudyQueryResult> QueryStudiesViaDicomAsync(PacsConfiguration configuration, PacsStudyQueryCriteria criteria, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsStudyQueryResult(true, "C-FIND 查询成功", "测试替身未执行真实查询。", Array.Empty<PacsRemoteStudy>(), DateTime.UtcNow));
+        }
+
+        public Task<PacsRetrieveResult> RetrieveStudyViaDicomAsync(string studyInstanceUid, string targetDirectory, PacsConfiguration configuration, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new PacsRetrieveResult(true, "C-MOVE 回取成功", "测试替身未执行真实回取。", targetDirectory, DateTime.UtcNow));
         }
     }
 
