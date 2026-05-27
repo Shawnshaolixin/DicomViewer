@@ -1,3 +1,4 @@
+using DicomViewer.Application.Models;
 using DicomViewer.Domain.Entities;
 
 namespace DicomViewer.Application.Abstractions;
@@ -10,5 +11,5 @@ public interface IWorklistService
     /// <summary>
     /// 加载可供控制台选择的检查任务列表。
     /// </summary>
-    Task<IReadOnlyList<ImagingOrder>> LoadAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ImagingOrder>> QueryAsync(MwlQueryCriteria criteria, CancellationToken cancellationToken = default);
 }

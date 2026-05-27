@@ -73,7 +73,7 @@ public sealed class ExamWorkflowService
     public async Task<ConsoleSnapshot> LoadWorklistAsync(CancellationToken cancellationToken = default)
     {
         EnsureConfigurationLoaded();
-        _orders = await _worklistService.LoadAsync(cancellationToken);
+        _orders = await _worklistService.QueryAsync(MwlQueryCriteria.Empty, cancellationToken);
         _statusText = _orders.Count == 0 ? "工作列表为空" : $"已加载 {_orders.Count} 条工作列表";
         _notesText = _orders.Count == 0 ? "请检查模拟数据源。" : "请选择一条检查任务进入准备状态。";
         _auditService.Record(_statusText);
@@ -113,7 +113,14 @@ public sealed class ExamWorkflowService
             DeviceOperationalState.Preparing,
             DateTime.UtcNow,
             null,
-            null);
+            null,
+            null,
+            MppsStatus.None,
+            null,
+            null,
+            null,
+            string.IsNullOrWhiteSpace(_selectedOrder.ScheduledProcedureStepId) ? null : _selectedOrder.ScheduledProcedureStepId,
+            string.IsNullOrWhiteSpace(_selectedOrder.AccessionNumber) ? null : _selectedOrder.AccessionNumber);
 
         _statusText = "已创建检查会话";
         _notesText = $"当前任务: {_selectedOrder.PatientName} / {_selectedOrder.ProcedureDescription}";
@@ -544,6 +551,13 @@ public sealed class ExamWorkflowService
             _session.LastExposureAtUtc,
             _session.LastGeneratedArtifact,
             _lastExposureResult?.ImageId,
-            DateTime.UtcNow));
+            DateTime.UtcNow,
+            _session.MppsInstanceUid,
+            _session.MppsStatus,
+            _session.MppsCreatedAtUtc,
+            _session.MppsLastSentAtUtc,
+            _session.MppsLastError,
+            _session.ScheduledProcedureStepIdSnapshot,
+            _session.AccessionNumberSnapshot));
     }
 }

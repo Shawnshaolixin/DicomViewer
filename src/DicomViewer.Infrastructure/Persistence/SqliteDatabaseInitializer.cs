@@ -50,6 +50,13 @@ public sealed class SqliteDatabaseInitializer
                 LastExposureAtUtc TEXT NULL,
                 LastGeneratedArtifactPath TEXT NULL,
                 LastImageId TEXT NULL,
+                MppsInstanceUid TEXT NULL,
+                MppsStatus INTEGER NOT NULL DEFAULT 0,
+                MppsCreatedAtUtc TEXT NULL,
+                MppsLastSentAtUtc TEXT NULL,
+                MppsLastError TEXT NULL,
+                ScheduledProcedureStepIdSnapshot TEXT NULL,
+                AccessionNumberSnapshot TEXT NULL,
                 UpdatedAtUtc TEXT NOT NULL
             );
 
@@ -67,5 +74,32 @@ public sealed class SqliteDatabaseInitializer
             );
             """;
         command.ExecuteNonQuery();
+
+        EnsureColumnExists(connection, "ExamSessions", "MppsInstanceUid", "TEXT NULL");
+        EnsureColumnExists(connection, "ExamSessions", "MppsStatus", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(connection, "ExamSessions", "MppsCreatedAtUtc", "TEXT NULL");
+        EnsureColumnExists(connection, "ExamSessions", "MppsLastSentAtUtc", "TEXT NULL");
+        EnsureColumnExists(connection, "ExamSessions", "MppsLastError", "TEXT NULL");
+        EnsureColumnExists(connection, "ExamSessions", "ScheduledProcedureStepIdSnapshot", "TEXT NULL");
+        EnsureColumnExists(connection, "ExamSessions", "AccessionNumberSnapshot", "TEXT NULL");
+    }
+
+    private static void EnsureColumnExists(System.Data.Common.DbConnection connection, string tableName, string columnName, string columnDefinition)
+    {
+        using var pragmaCommand = connection.CreateCommand();
+        pragmaCommand.CommandText = $"PRAGMA table_info({tableName});";
+
+        using var reader = pragmaCommand.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        using var alterCommand = connection.CreateCommand();
+        alterCommand.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};";
+        alterCommand.ExecuteNonQuery();
     }
 }

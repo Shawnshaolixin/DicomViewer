@@ -24,11 +24,13 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
             INSERT INTO ExamSessions (
                 SessionId, OrderId, PatientId, PatientName, ProcedureDescription, BodyPart, Projection,
                 WorkflowStatus, DeviceState, StartedAtUtc, LastExposureAtUtc, LastGeneratedArtifactPath,
-                LastImageId, UpdatedAtUtc)
+                LastImageId, MppsInstanceUid, MppsStatus, MppsCreatedAtUtc, MppsLastSentAtUtc,
+                MppsLastError, ScheduledProcedureStepIdSnapshot, AccessionNumberSnapshot, UpdatedAtUtc)
             VALUES (
                 $sessionId, $orderId, $patientId, $patientName, $procedureDescription, $bodyPart, $projection,
                 $workflowStatus, $deviceState, $startedAtUtc, $lastExposureAtUtc, $lastGeneratedArtifactPath,
-                $lastImageId, $updatedAtUtc)
+                $lastImageId, $mppsInstanceUid, $mppsStatus, $mppsCreatedAtUtc, $mppsLastSentAtUtc,
+                $mppsLastError, $scheduledProcedureStepIdSnapshot, $accessionNumberSnapshot, $updatedAtUtc)
             ON CONFLICT(SessionId) DO UPDATE SET
                 OrderId = excluded.OrderId,
                 PatientId = excluded.PatientId,
@@ -42,6 +44,13 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
                 LastExposureAtUtc = excluded.LastExposureAtUtc,
                 LastGeneratedArtifactPath = excluded.LastGeneratedArtifactPath,
                 LastImageId = excluded.LastImageId,
+                MppsInstanceUid = excluded.MppsInstanceUid,
+                MppsStatus = excluded.MppsStatus,
+                MppsCreatedAtUtc = excluded.MppsCreatedAtUtc,
+                MppsLastSentAtUtc = excluded.MppsLastSentAtUtc,
+                MppsLastError = excluded.MppsLastError,
+                ScheduledProcedureStepIdSnapshot = excluded.ScheduledProcedureStepIdSnapshot,
+                AccessionNumberSnapshot = excluded.AccessionNumberSnapshot,
                 UpdatedAtUtc = excluded.UpdatedAtUtc;
             """;
 
@@ -58,6 +67,13 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
         AddParameter(command, "$lastExposureAtUtc", sessionRecord.LastExposureAtUtc?.ToString("O", CultureInfo.InvariantCulture));
         AddParameter(command, "$lastGeneratedArtifactPath", sessionRecord.LastGeneratedArtifactPath);
         AddParameter(command, "$lastImageId", sessionRecord.LastImageId);
+        AddParameter(command, "$mppsInstanceUid", sessionRecord.MppsInstanceUid);
+        AddParameter(command, "$mppsStatus", (int)sessionRecord.MppsStatus);
+        AddParameter(command, "$mppsCreatedAtUtc", sessionRecord.MppsCreatedAtUtc?.ToString("O", CultureInfo.InvariantCulture));
+        AddParameter(command, "$mppsLastSentAtUtc", sessionRecord.MppsLastSentAtUtc?.ToString("O", CultureInfo.InvariantCulture));
+        AddParameter(command, "$mppsLastError", sessionRecord.MppsLastError);
+        AddParameter(command, "$scheduledProcedureStepIdSnapshot", sessionRecord.ScheduledProcedureStepIdSnapshot);
+        AddParameter(command, "$accessionNumberSnapshot", sessionRecord.AccessionNumberSnapshot);
         AddParameter(command, "$updatedAtUtc", sessionRecord.UpdatedAtUtc.ToString("O", CultureInfo.InvariantCulture));
         command.ExecuteNonQuery();
     }
@@ -71,7 +87,8 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
         command.CommandText = """
             SELECT SessionId, OrderId, PatientId, PatientName, ProcedureDescription, BodyPart, Projection,
                    WorkflowStatus, DeviceState, StartedAtUtc, LastExposureAtUtc, LastGeneratedArtifactPath,
-                   LastImageId, UpdatedAtUtc
+                 LastImageId, UpdatedAtUtc, MppsInstanceUid, MppsStatus, MppsCreatedAtUtc,
+                 MppsLastSentAtUtc, MppsLastError, ScheduledProcedureStepIdSnapshot, AccessionNumberSnapshot
             FROM ExamSessions
             WHERE SessionId = $sessionId
             LIMIT 1;
@@ -98,7 +115,14 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
             reader.IsDBNull(10) ? null : ParseUtc(reader.GetString(10)),
             reader.IsDBNull(11) ? null : reader.GetString(11),
             reader.IsDBNull(12) ? null : reader.GetString(12),
-            ParseUtc(reader.GetString(13)));
+            ParseUtc(reader.GetString(13)),
+            reader.IsDBNull(14) ? null : reader.GetString(14),
+            reader.IsDBNull(15) ? DicomViewer.Domain.Enums.MppsStatus.None : (DicomViewer.Domain.Enums.MppsStatus)reader.GetInt32(15),
+            reader.IsDBNull(16) ? null : ParseUtc(reader.GetString(16)),
+            reader.IsDBNull(17) ? null : ParseUtc(reader.GetString(17)),
+            reader.IsDBNull(18) ? null : reader.GetString(18),
+            reader.IsDBNull(19) ? null : reader.GetString(19),
+            reader.IsDBNull(20) ? null : reader.GetString(20));
     }
 
     public IReadOnlyList<ExamSessionRecord> GetRecent(int limit)
@@ -112,7 +136,8 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
         command.CommandText = """
             SELECT SessionId, OrderId, PatientId, PatientName, ProcedureDescription, BodyPart, Projection,
                    WorkflowStatus, DeviceState, StartedAtUtc, LastExposureAtUtc, LastGeneratedArtifactPath,
-                   LastImageId, UpdatedAtUtc
+                 LastImageId, UpdatedAtUtc, MppsInstanceUid, MppsStatus, MppsCreatedAtUtc,
+                 MppsLastSentAtUtc, MppsLastError, ScheduledProcedureStepIdSnapshot, AccessionNumberSnapshot
             FROM ExamSessions
             ORDER BY UpdatedAtUtc DESC
             LIMIT $limit;
@@ -136,7 +161,14 @@ public sealed class SqliteExamSessionStore : IExamSessionStore
                 reader.IsDBNull(10) ? null : ParseUtc(reader.GetString(10)),
                 reader.IsDBNull(11) ? null : reader.GetString(11),
                 reader.IsDBNull(12) ? null : reader.GetString(12),
-                ParseUtc(reader.GetString(13))));
+                ParseUtc(reader.GetString(13)),
+                reader.IsDBNull(14) ? null : reader.GetString(14),
+                reader.IsDBNull(15) ? DicomViewer.Domain.Enums.MppsStatus.None : (DicomViewer.Domain.Enums.MppsStatus)reader.GetInt32(15),
+                reader.IsDBNull(16) ? null : ParseUtc(reader.GetString(16)),
+                reader.IsDBNull(17) ? null : ParseUtc(reader.GetString(17)),
+                reader.IsDBNull(18) ? null : reader.GetString(18),
+                reader.IsDBNull(19) ? null : reader.GetString(19),
+                reader.IsDBNull(20) ? null : reader.GetString(20)));
         }
 
         return sessions;

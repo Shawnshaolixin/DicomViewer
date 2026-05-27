@@ -93,7 +93,7 @@ public sealed class ExamWorkflowResultPersistenceTests
 
     private sealed class FixedWorklistService : IWorklistService
     {
-        public Task<IReadOnlyList<ImagingOrder>> LoadAsync(CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<ImagingOrder>> QueryAsync(MwlQueryCriteria criteria, CancellationToken cancellationToken = default)
         {
             IReadOnlyList<ImagingOrder> orders =
             [

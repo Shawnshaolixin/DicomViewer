@@ -14,4 +14,11 @@ public sealed record ExamSession(
     DeviceOperationalState DeviceState,
     DateTime StartedAtUtc,
     DateTime? LastExposureAtUtc,
-    string? LastGeneratedArtifact);
+    string? LastGeneratedArtifact,
+    string? MppsInstanceUid = null,
+    MppsStatus MppsStatus = MppsStatus.None,
+    DateTime? MppsCreatedAtUtc = null,
+    DateTime? MppsLastSentAtUtc = null,
+    string? MppsLastError = null,
+    string? ScheduledProcedureStepIdSnapshot = null,
+    string? AccessionNumberSnapshot = null);
