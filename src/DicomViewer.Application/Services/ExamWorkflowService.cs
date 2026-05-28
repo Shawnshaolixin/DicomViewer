@@ -20,6 +20,7 @@ public sealed class ExamWorkflowService
     private readonly IConsoleConfigurationStore _consoleConfigurationStore;
     private readonly IExamSessionStore _examSessionStore;
     private readonly IPacsSendRecordStore _pacsSendRecordStore;
+    private readonly IMppsService _mppsService;
     private const int HistoryItemLimit = 12;
 
     private IReadOnlyList<ImagingOrder> _orders = Array.Empty<ImagingOrder>();
@@ -44,7 +45,8 @@ public sealed class ExamWorkflowService
         IAuditService auditService,
         IConsoleConfigurationStore consoleConfigurationStore,
         IExamSessionStore examSessionStore,
-        IPacsSendRecordStore pacsSendRecordStore)
+        IPacsSendRecordStore pacsSendRecordStore,
+        IMppsService? mppsService = null)
     {
         _worklistService = worklistService;
         _interlockService = interlockService;
@@ -54,6 +56,8 @@ public sealed class ExamWorkflowService
         _consoleConfigurationStore = consoleConfigurationStore;
         _examSessionStore = examSessionStore;
         _pacsSendRecordStore = pacsSendRecordStore;
+        // 默认给一个 No-Op 实现，避免老测试在未注入 MPPS 时全部改造。
+        _mppsService = mppsService ?? NoOpMppsService.Instance;
     }
 
     /// <summary>
@@ -268,6 +272,14 @@ public sealed class ExamWorkflowService
     {
         _ = RunInterlockCheck();
         if (!_lastInterlockResult.IsPassed || _session is null)
+        {
+            return BuildSnapshot();
+        }
+
+        // 标准流程要求：正式曝光前先把 MPPS 置为 IN PROGRESS。
+        // 如果 Started 失败，当前版本采用严格策略阻止曝光，便于学习标准约束。
+        var mppsStarted = await EnsureMppsStartedAsync(cancellationToken);
+        if (!mppsStarted)
         {
             return BuildSnapshot();
         }
@@ -559,5 +571,96 @@ public sealed class ExamWorkflowService
             _session.MppsLastError,
             _session.ScheduledProcedureStepIdSnapshot,
             _session.AccessionNumberSnapshot));
+    }
+
+    private async Task<bool> EnsureMppsStartedAsync(CancellationToken cancellationToken)
+    {
+        if (_session is null)
+        {
+            return false;
+        }
+
+        if (_session.MppsStatus == MppsStatus.InProgress || _session.MppsStatus == MppsStatus.Completed)
+        {
+            return true;
+        }
+
+        _statusText = "正在上报 MPPS Started";
+        _notesText = "曝光前执行 N-CREATE，把检查置为 IN PROGRESS。";
+        _auditService.Record("MPPS Started 上报开始");
+
+        var submitResult = await _mppsService.CreateInProgressAsync(_session, cancellationToken);
+        if (submitResult.IsSuccess)
+        {
+            _session = _session with
+            {
+                MppsInstanceUid = string.IsNullOrWhiteSpace(submitResult.SopInstanceUid) ? _session.MppsInstanceUid : submitResult.SopInstanceUid,
+                MppsStatus = MppsStatus.InProgress,
+                MppsCreatedAtUtc = submitResult.ProcessedAtUtc,
+                MppsLastSentAtUtc = submitResult.ProcessedAtUtc,
+                MppsLastError = null,
+            };
+
+            PersistSession();
+            _auditService.Record($"MPPS Started 上报成功: {submitResult.SopInstanceUid}");
+            return true;
+        }
+
+        _session = _session with
+        {
+            MppsInstanceUid = string.IsNullOrWhiteSpace(submitResult.SopInstanceUid) ? _session.MppsInstanceUid : submitResult.SopInstanceUid,
+            MppsStatus = MppsStatus.Failed,
+            MppsLastSentAtUtc = submitResult.ProcessedAtUtc,
+            MppsLastError = submitResult.Details,
+        };
+        PersistSession();
+
+        _statusText = submitResult.StatusText;
+        _notesText = submitResult.Details;
+        _auditService.Record($"MPPS Started 上报失败: {submitResult.Details}");
+        return false;
+    }
+
+    /// <summary>
+    /// 默认兜底实现：用于未注入 MPPS 服务时保持旧流程可运行。
+    /// 真实运行请通过 DI 注入 DicomMppsService。
+    /// </summary>
+    private sealed class NoOpMppsService : IMppsService
+    {
+        public static NoOpMppsService Instance { get; } = new();
+
+        public Task<MppsSubmitResult> CreateInProgressAsync(ExamSession session, CancellationToken cancellationToken = default)
+        {
+            var sopInstanceUid = string.IsNullOrWhiteSpace(session.MppsInstanceUid)
+                ? Guid.NewGuid().ToString("N")
+                : session.MppsInstanceUid;
+
+            return Task.FromResult(new MppsSubmitResult(
+                true,
+                "MPPS Started 成功",
+                "No-Op MPPS 服务：仅用于本地测试与向后兼容。",
+                sopInstanceUid,
+                DateTime.UtcNow));
+        }
+
+        public Task<MppsSubmitResult> CompleteAsync(ExamSession session, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MppsSubmitResult(
+                true,
+                "MPPS Completed 成功",
+                "No-Op MPPS 服务：仅用于本地测试与向后兼容。",
+                session.MppsInstanceUid ?? string.Empty,
+                DateTime.UtcNow));
+        }
+
+        public Task<MppsSubmitResult> DiscontinueAsync(ExamSession session, string reason, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MppsSubmitResult(
+                true,
+                "MPPS Discontinued 成功",
+                $"No-Op MPPS 服务：仅用于本地测试与向后兼容。原因: {reason}",
+                session.MppsInstanceUid ?? string.Empty,
+                DateTime.UtcNow));
+        }
     }
 }

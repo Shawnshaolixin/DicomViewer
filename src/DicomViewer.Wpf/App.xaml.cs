@@ -38,7 +38,10 @@ public partial class App : PrismApplication
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
         containerRegistry.RegisterSingleton<IStudyCatalogService, FileSystemStudyCatalogService>();
-        containerRegistry.RegisterSingleton<IWorklistService, MockWorklistService>();
+        // 保留 Mock 实现作为 DICOM MWL 查询失败时的降级数据源。
+        containerRegistry.RegisterSingleton<MockWorklistService>();
+        // 默认走标准 MWL 查询，业务层只依赖 IWorklistService 抽象。
+        containerRegistry.RegisterSingleton<IWorklistService, DicomMwlWorklistService>();
         containerRegistry.RegisterSingleton<IInterlockService, DefaultInterlockService>();
         containerRegistry.RegisterSingleton<IAppDbConnectionFactory, SqliteAppDbConnectionFactory>();
         containerRegistry.RegisterSingleton<SqliteDatabaseInitializer>();
@@ -48,6 +51,8 @@ public partial class App : PrismApplication
         containerRegistry.RegisterSingleton<SimulatedDicomBuilder>();
         containerRegistry.RegisterSingleton<IExposureSimulationService, MockExposureSimulationService>();
         containerRegistry.RegisterSingleton<ILocalDicomStoreScpService, LocalDicomStoreScpService>();
+        // MPPS 使用标准 DICOM N-CREATE/N-SET，上层只依赖 IMppsService 抽象。
+        containerRegistry.RegisterSingleton<IMppsService, DicomMppsService>();
         containerRegistry.RegisterSingleton<IPacsStoreService, OrthancStoreService>();
         containerRegistry.RegisterSingleton<IAuditService, SqliteAuditService>();
         containerRegistry.RegisterSingleton<IImageRenderService, PlaceholderRenderService>();

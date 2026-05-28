@@ -106,7 +106,24 @@ public sealed class ExamWorkflowServiceTests
         Assert.Contains("曝光执行完成", snapshot.AuditEntries.Last(), StringComparison.Ordinal);
     }
 
-    private static ExamWorkflowService CreateService(IExposureSimulationService? recordingExposureSimulationService = null)
+    [Fact]
+    public async Task ExecuteExposureAsync_WhenMppsStartedFails_BlocksExposure()
+    {
+        // 这个测试用于说明“为什么要先做 MPPS Started”：如果上报失败，当前策略会阻止曝光。
+        var service = CreateService(mppsService: new FailingMppsService());
+
+        _ = await service.LoadWorklistAsync();
+        _ = service.SelectOrder("ORD-1");
+
+        var snapshot = await service.ExecuteExposureAsync();
+
+        Assert.Equal("MPPS Started 失败", snapshot.StatusText);
+        Assert.Null(snapshot.LastExposureResult);
+    }
+
+    private static ExamWorkflowService CreateService(
+        IExposureSimulationService? recordingExposureSimulationService = null,
+        IMppsService? mppsService = null)
     {
         return new ExamWorkflowService(
             new FixedWorklistService(),
@@ -116,7 +133,8 @@ public sealed class ExamWorkflowServiceTests
             new InMemoryAuditService(),
             new InMemoryConsoleConfigurationStore(),
             new InMemoryExamSessionStore(),
-            new InMemoryPacsSendRecordStore());
+            new InMemoryPacsSendRecordStore(),
+            mppsService);
     }
 
     private sealed class FixedWorklistService : IWorklistService
@@ -276,6 +294,29 @@ public sealed class ExamWorkflowServiceTests
         public IReadOnlyList<PacsSendRecord> GetBySessionId(string sessionId)
         {
             return Array.Empty<PacsSendRecord>();
+        }
+    }
+
+    private sealed class FailingMppsService : IMppsService
+    {
+        public Task<MppsSubmitResult> CreateInProgressAsync(ExamSession session, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MppsSubmitResult(
+                false,
+                "MPPS Started 失败",
+                "测试替身：模拟 N-CREATE 失败。",
+                string.Empty,
+                DateTime.UtcNow));
+        }
+
+        public Task<MppsSubmitResult> CompleteAsync(ExamSession session, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MppsSubmitResult(true, "ok", "ok", session.MppsInstanceUid ?? string.Empty, DateTime.UtcNow));
+        }
+
+        public Task<MppsSubmitResult> DiscontinueAsync(ExamSession session, string reason, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MppsSubmitResult(true, "ok", reason, session.MppsInstanceUid ?? string.Empty, DateTime.UtcNow));
         }
     }
 }
