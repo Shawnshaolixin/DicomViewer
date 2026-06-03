@@ -21,6 +21,7 @@ public sealed class WorkspaceService
     private readonly IViewportImageService _viewportImageService;
 
     private readonly Dictionary<string, List<MeasurementAnnotation>> _measurementsBySeries = new();
+    private readonly Dictionary<string, SeriesSummary> _seriesSummariesBySeriesInstanceUid = new();
 
     private IReadOnlyList<Patient> _patients = Array.Empty<Patient>();
     private IReadOnlyList<Series> _seriesList = Array.Empty<Series>();
@@ -66,6 +67,7 @@ public sealed class WorkspaceService
         _viewTransform = ViewTransform.Default;
         _activeWindowLevel = null;
         _measurementDraft = null;
+        _seriesSummariesBySeriesInstanceUid.Clear();
 
         return BuildSnapshot();
     }
@@ -363,11 +365,7 @@ public sealed class WorkspaceService
             : $"{renderedViewport.PlaceholderText}\n{viewportLoad.Message}";
 
         return new WorkspaceSnapshot(
-            _seriesList.Select(seriesItem => new SeriesSummary(
-                seriesItem.SeriesInstanceUid,
-                $"{seriesItem.Modality} - {seriesItem.SeriesDescription}",
-                seriesItem.Modality,
-                seriesItem.Instances.Count)).ToList(),
+            _seriesList.Select(BuildSeriesSummary).ToList(),
             series.SeriesInstanceUid,
             viewportLoad.Image,
             _viewTransform,
@@ -386,6 +384,35 @@ public sealed class WorkspaceService
             BuildViewText(),
             notesText,
             GetMeasurementsForSnapshot(series.SeriesInstanceUid, image));
+    }
+
+    private SeriesSummary BuildSeriesSummary(Series series)
+    {
+        if (_seriesSummariesBySeriesInstanceUid.TryGetValue(series.SeriesInstanceUid, out var summary))
+        {
+            return summary;
+        }
+
+        ViewportImageData? thumbnailImage = null;
+        var firstImage = series.Instances.FirstOrDefault();
+        if (firstImage is not null)
+        {
+            var thumbnailLoad = _viewportImageService.TryLoad(firstImage.FilePath, 0, firstImage.DefaultWindowLevel);
+            if (thumbnailLoad.Image is not null)
+            {
+                thumbnailImage = ResizeForThumbnail(thumbnailLoad.Image, 72);
+            }
+        }
+
+        summary = new SeriesSummary(
+            series.SeriesInstanceUid,
+            $"{series.Modality} - {series.SeriesDescription}",
+            series.Modality,
+            series.Instances.Count,
+            thumbnailImage);
+
+        _seriesSummariesBySeriesInstanceUid[series.SeriesInstanceUid] = summary;
+        return summary;
     }
 
             /// <summary>
@@ -546,6 +573,39 @@ public sealed class WorkspaceService
     private static bool IsMeasurementTool(ViewerToolMode toolMode)
     {
         return toolMode is ViewerToolMode.MeasureLength or ViewerToolMode.MeasureAngle;
+    }
+
+    private static ViewportImageData ResizeForThumbnail(ViewportImageData image, int maxDimension)
+    {
+        if (image.Width <= maxDimension && image.Height <= maxDimension)
+        {
+            return image;
+        }
+
+        var scale = Math.Min(maxDimension / (double)image.Width, maxDimension / (double)image.Height);
+        var targetWidth = Math.Max(1, (int)Math.Round(image.Width * scale));
+        var targetHeight = Math.Max(1, (int)Math.Round(image.Height * scale));
+        var bytesPerPixel = image.PixelFormat == ViewportPixelFormat.Rgb24 ? 3 : 1;
+        var targetStride = targetWidth * bytesPerPixel;
+        var targetPixels = new byte[targetStride * targetHeight];
+
+        for (var y = 0; y < targetHeight; y++)
+        {
+            var sourceY = Math.Min(image.Height - 1, (int)(y / scale));
+            for (var x = 0; x < targetWidth; x++)
+            {
+                var sourceX = Math.Min(image.Width - 1, (int)(x / scale));
+                var sourceOffset = (sourceY * image.Stride) + (sourceX * bytesPerPixel);
+                var targetOffset = (y * targetStride) + (x * bytesPerPixel);
+
+                for (var channel = 0; channel < bytesPerPixel; channel++)
+                {
+                    targetPixels[targetOffset + channel] = image.Pixels[sourceOffset + channel];
+                }
+            }
+        }
+
+        return new ViewportImageData(targetPixels, targetWidth, targetHeight, targetStride, image.PixelFormat);
     }
 
     private string BuildViewText()

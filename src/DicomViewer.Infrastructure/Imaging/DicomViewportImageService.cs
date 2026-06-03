@@ -32,10 +32,9 @@ public sealed class DicomViewportImageService : IViewportImageService
             var dataset = dicomFile.Dataset;
             var pixelData = DicomPixelData.Create(dataset);
 
-            // 先只支持单样本灰度图，避免在学习阶段过早引入彩色与调色板逻辑。
-            if (pixelData.NumberOfFrames == 0 || pixelData.SamplesPerPixel != 1)
+            if (pixelData.NumberOfFrames == 0)
             {
-                return new ViewportLoadResult(null, "当前仅支持单样本灰度 DICOM 图像。");
+                return new ViewportLoadResult(null, "当前影像不包含可读取帧。");
             }
 
             var safeFrameIndex = Math.Clamp(frameIndex, 0, pixelData.NumberOfFrames - 1);
@@ -50,6 +49,7 @@ public sealed class DicomViewportImageService : IViewportImageService
                 GrayscalePixelDataU8 image8 => BuildImage(image8.Data, image8.Width, image8.Height, windowLevel, invert, slope, intercept),
                 GrayscalePixelDataU16 image16 => BuildImage(image16.Data, image16.Width, image16.Height, windowLevel, invert, slope, intercept),
                 GrayscalePixelDataS16 image16Signed => BuildImage(image16Signed.Data, image16Signed.Width, image16Signed.Height, windowLevel, invert, slope, intercept),
+                ColorPixelData24 colorImage => BuildColorImage(colorImage.Data, colorImage.Width, colorImage.Height),
                 _ => null,
             };
 
@@ -124,6 +124,16 @@ public sealed class DicomViewportImageService : IViewportImageService
         }
 
         return new ViewportImageData(pixels, width, height, width);
+    }
+
+    private static ViewportImageData BuildColorImage(
+        byte[] source,
+        int width,
+        int height)
+    {
+        var pixels = new byte[source.Length];
+        Buffer.BlockCopy(source, 0, pixels, 0, source.Length);
+        return new ViewportImageData(pixels, width, height, width * 3, ViewportPixelFormat.Rgb24);
     }
 
     /// <summary>

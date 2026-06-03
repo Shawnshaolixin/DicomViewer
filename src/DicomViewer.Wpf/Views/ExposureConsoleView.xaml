@@ -117,6 +117,15 @@
                             <TextBlock Text="历史检查" FontSize="18" FontWeight="SemiBold" />
                             <Button Content="回看历史" Command="{Binding ReviewHistoryCommand}" DockPanel.Dock="Right" Margin="8,0,0,0" />
                         </DockPanel>
+                        <DockPanel Margin="0,12,0,0">
+                            <Button Content="清空"
+                                   Command="{Binding ClearHistoryFilterCommand}"
+                                   DockPanel.Dock="Right"
+                                   Margin="8,0,0,0" />
+                            <TextBox Text="{Binding HistoryFilterText, UpdateSourceTrigger=PropertyChanged}"
+                                    MinWidth="0"
+                                    ToolTip="按患者、检查、部位、投照方向或状态筛选历史记录" />
+                        </DockPanel>
                         <ListBox ItemsSource="{Binding HistoryItems}"
                                  SelectedItem="{Binding SelectedHistoryItem}"
                                  Background="#10171E"
@@ -142,6 +151,13 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                        <DockPanel Margin="0,12,0,0">
+                            <TextBlock Text="{Binding HistoryPageText}" VerticalAlignment="Center" />
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="上一页" Command="{Binding PreviousHistoryPageCommand}" Margin="8,0,0,0" />
+                                <Button Content="下一页" Command="{Binding NextHistoryPageCommand}" Margin="8,0,0,0" />
+                            </StackPanel>
+                        </DockPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>

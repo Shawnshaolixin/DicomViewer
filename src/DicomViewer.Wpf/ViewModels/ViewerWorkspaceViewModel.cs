@@ -564,7 +564,7 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
     }
 
     /// <summary>
-    /// 把服务层提供的灰度像素数据包装为 WPF 可显示的 <see cref="BitmapSource"/>。
+    /// 把服务层提供的像素数据包装为 WPF 可显示的 <see cref="BitmapSource"/>。
     /// </summary>
     private static BitmapSource? CreateBitmapSource(ViewportImageData? image)
     {
@@ -578,7 +578,7 @@ public sealed class ViewerWorkspaceViewModel : BindableBase, INavigationAware
             image.Height,
             96,
             96,
-            PixelFormats.Gray8,
+            image.PixelFormat == ViewportPixelFormat.Rgb24 ? PixelFormats.Rgb24 : PixelFormats.Gray8,
             null,
             image.Pixels,
             image.Stride);

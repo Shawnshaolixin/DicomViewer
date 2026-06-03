@@ -6,4 +6,5 @@ public sealed record SeriesSummary(
     string SeriesInstanceUid,
     string DisplayName,
     ModalityType Modality,
-    int ImageCount);
+    int ImageCount,
+    ViewportImageData? ThumbnailImage = null);

@@ -1,3 +1,4 @@
+using DicomViewer.Application.Models;
 using DicomViewer.Domain.ValueObjects;
 using DicomViewer.Infrastructure.Imaging;
 using FellowOakDicom;
@@ -91,6 +92,33 @@ public sealed class DicomViewportImageServiceTests
         }
     }
 
+    [Fact]
+    public void TryLoad_WithRgbDicom_ReturnsRgbViewportImage()
+    {
+        var service = new DicomViewportImageService();
+        var tempFilePath = Path.Combine(Path.GetTempPath(), $"dicomviewer-rgb-{Guid.NewGuid():N}.dcm");
+
+        try
+        {
+            CreateRgbTestDicom(tempFilePath);
+
+            var image = service.TryLoad(tempFilePath, 0, new WindowLevel(255, 127.5));
+
+            Assert.True(image.Succeeded);
+            Assert.NotNull(image.Image);
+            Assert.Equal(ViewportPixelFormat.Rgb24, image.Image!.PixelFormat);
+            Assert.Equal(12, image.Image.Pixels.Length);
+            Assert.Equal(new byte[] { 255, 0, 0 }, image.Image.Pixels.Take(3).ToArray());
+        }
+        finally
+        {
+            if (File.Exists(tempFilePath))
+            {
+                File.Delete(tempFilePath);
+            }
+        }
+    }
+
     private static void CreateTestDicom(string filePath, IReadOnlyList<byte[]>? framePixels = null)
     {
         var dataset = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
@@ -123,6 +151,40 @@ public sealed class DicomViewportImageServiceTests
         {
             pixelData.AddFrame(new MemoryByteBuffer(frame));
         }
+
+        new DicomFile(dataset).Save(filePath);
+    }
+
+    private static void CreateRgbTestDicom(string filePath)
+    {
+        var dataset = new DicomDataset(DicomTransferSyntax.ExplicitVRLittleEndian)
+        {
+            { DicomTag.SOPClassUID, DicomUID.SecondaryCaptureImageStorage },
+            { DicomTag.SOPInstanceUID, DicomUID.Generate() },
+            { DicomTag.PatientName, "Render^Rgb" },
+            { DicomTag.PatientID, "RGB-1" },
+            { DicomTag.StudyInstanceUID, DicomUID.Generate() },
+            { DicomTag.SeriesInstanceUID, DicomUID.Generate() },
+            { DicomTag.Rows, (ushort)2 },
+            { DicomTag.Columns, (ushort)2 },
+            { DicomTag.BitsAllocated, (ushort)8 },
+            { DicomTag.BitsStored, (ushort)8 },
+            { DicomTag.HighBit, (ushort)7 },
+            { DicomTag.PixelRepresentation, (ushort)0 },
+            { DicomTag.SamplesPerPixel, (ushort)3 },
+            { DicomTag.PlanarConfiguration, (ushort)0 },
+            { DicomTag.PhotometricInterpretation, "RGB" },
+            { DicomTag.NumberOfFrames, 1 },
+        };
+
+        var pixelData = DicomPixelData.Create(dataset, true);
+        pixelData.AddFrame(new MemoryByteBuffer(
+        [
+            255, 0, 0,
+            0, 255, 0,
+            0, 0, 255,
+            255, 255, 0,
+        ]));
 
         new DicomFile(dataset).Save(filePath);
     }

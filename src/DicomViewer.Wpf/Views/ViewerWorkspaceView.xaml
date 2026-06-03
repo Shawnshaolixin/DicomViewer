@@ -1,6 +1,7 @@
 <UserControl x:Class="DicomViewer.Wpf.Views.ViewerWorkspaceView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:DicomViewer.Wpf.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="clr-namespace:DicomViewer.Application.Models;assembly=DicomViewer.Application"
@@ -9,6 +10,7 @@
              prism:ViewModelLocator.AutoWireViewModel="True"
              Background="#11161C">
     <UserControl.Resources>
+        <converters:ViewportImageToBitmapSourceConverter x:Key="ViewportImageConverter" />
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="#EAF1F5" />
         </Style>
@@ -123,10 +125,44 @@
                              ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type models:SeriesSummary}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding ImageCount, StringFormat=切片数: {0}}" Foreground="#A9BAC6" Margin="0,4,0,0" />
-                                </StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="64"
+                                            Height="64"
+                                            CornerRadius="8"
+                                            Background="#081018"
+                                            BorderBrush="#243341"
+                                            BorderThickness="1">
+                                        <Grid>
+                                            <Image Source="{Binding ThumbnailImage, Converter={StaticResource ViewportImageConverter}}"
+                                                   Stretch="UniformToFill" />
+                                            <TextBlock Text="无预览"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="#6C8291"
+                                                       FontSize="11">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ThumbnailImage}" Value="{x:Null}">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding ImageCount, StringFormat=切片数: {0}}" Foreground="#A9BAC6" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

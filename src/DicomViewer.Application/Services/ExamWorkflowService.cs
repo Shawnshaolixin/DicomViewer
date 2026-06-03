@@ -284,40 +284,65 @@ public sealed class ExamWorkflowService
             return BuildSnapshot();
         }
 
-        _session = _session with
+        try
         {
-            DeviceState = DeviceOperationalState.Exposing,
-            WorkflowStatus = ExamWorkflowStatus.Acquiring,
-            ExposureParameters = _exposureParameters,
-        };
-        _statusText = "正在执行模拟曝光";
-        _notesText = "已进入 Exposing 状态。";
-        _auditService.Record("曝光执行开始");
+            _session = _session with
+            {
+                DeviceState = DeviceOperationalState.Exposing,
+                WorkflowStatus = ExamWorkflowStatus.Acquiring,
+                ExposureParameters = _exposureParameters,
+            };
+            _statusText = "正在执行模拟曝光";
+            _notesText = "已进入 Exposing 状态。";
+            _auditService.Record("曝光执行开始");
 
-        _session = _session with
+            _session = _session with
+            {
+                DeviceState = DeviceOperationalState.Processing,
+                WorkflowStatus = ExamWorkflowStatus.Processing,
+            };
+
+            _lastExposureResult = await _exposureSimulationService.RunAsync(_session, _pacsConfiguration.OutputDirectory, cancellationToken);
+            _auditService.Record($"DICOM 生成: {_lastExposureResult.ArtifactPath}");
+
+            _session = _session with
+            {
+                DeviceState = DeviceOperationalState.Ready,
+                WorkflowStatus = ExamWorkflowStatus.Ready,
+                LastExposureAtUtc = _lastExposureResult.AcquiredAtUtc,
+                LastGeneratedArtifact = _lastExposureResult.ArtifactPath,
+            };
+
+            PersistSession();
+
+            await EnsureMppsCompletedAsync(cancellationToken);
+
+            _statusText = "模拟曝光完成";
+            _notesText = _lastExposureResult.PreviewText;
+            _auditService.Record("曝光执行完成");
+
+            return BuildSnapshot();
+        }
+        catch (Exception ex)
         {
-            DeviceState = DeviceOperationalState.Processing,
-            WorkflowStatus = ExamWorkflowStatus.Processing,
-        };
+            _statusText = "模拟曝光失败";
+            _notesText = ex.Message;
+            _auditService.Record($"曝光执行失败: {ex.Message}");
 
-        _lastExposureResult = await _exposureSimulationService.RunAsync(_session, _pacsConfiguration.OutputDirectory, cancellationToken);
-        _auditService.Record($"DICOM 生成: {_lastExposureResult.ArtifactPath}");
+            if (_session is not null)
+            {
+                _session = _session with
+                {
+                    DeviceState = DeviceOperationalState.Error,
+                    WorkflowStatus = ExamWorkflowStatus.Failed,
+                };
 
-        _session = _session with
-        {
-            DeviceState = DeviceOperationalState.Ready,
-            WorkflowStatus = ExamWorkflowStatus.Ready,
-            LastExposureAtUtc = _lastExposureResult.AcquiredAtUtc,
-            LastGeneratedArtifact = _lastExposureResult.ArtifactPath,
-        };
+                PersistSession();
+                await EnsureMppsDiscontinuedAsync("模拟曝光失败", cancellationToken);
+            }
 
-        PersistSession();
-
-        _statusText = "模拟曝光完成";
-        _notesText = _lastExposureResult.PreviewText;
-        _auditService.Record("曝光执行完成");
-
-        return BuildSnapshot();
+            return BuildSnapshot();
+        }
     }
 
     /// <summary>
@@ -619,6 +644,54 @@ public sealed class ExamWorkflowService
         _notesText = submitResult.Details;
         _auditService.Record($"MPPS Started 上报失败: {submitResult.Details}");
         return false;
+    }
+
+    private async Task EnsureMppsCompletedAsync(CancellationToken cancellationToken)
+    {
+        if (_session is null || _session.MppsStatus != MppsStatus.InProgress)
+        {
+            return;
+        }
+
+        _auditService.Record("MPPS Completed 上报开始");
+        var submitResult = await _mppsService.CompleteAsync(_session, cancellationToken);
+        UpdateMppsStatus(submitResult, MppsStatus.Completed, MppsStatus.Failed, "MPPS Completed");
+    }
+
+    private async Task EnsureMppsDiscontinuedAsync(string reason, CancellationToken cancellationToken)
+    {
+        if (_session is null || string.IsNullOrWhiteSpace(_session.MppsInstanceUid))
+        {
+            return;
+        }
+
+        if (_session.MppsStatus is MppsStatus.Completed or MppsStatus.Discontinued)
+        {
+            return;
+        }
+
+        _auditService.Record($"MPPS Discontinued 上报开始: {reason}");
+        var submitResult = await _mppsService.DiscontinueAsync(_session, reason, cancellationToken);
+        UpdateMppsStatus(submitResult, MppsStatus.Discontinued, MppsStatus.Failed, "MPPS Discontinued");
+    }
+
+    private void UpdateMppsStatus(MppsSubmitResult submitResult, MppsStatus successStatus, MppsStatus failureStatus, string actionName)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _session = _session with
+        {
+            MppsInstanceUid = string.IsNullOrWhiteSpace(submitResult.SopInstanceUid) ? _session.MppsInstanceUid : submitResult.SopInstanceUid,
+            MppsStatus = submitResult.IsSuccess ? successStatus : failureStatus,
+            MppsLastSentAtUtc = submitResult.ProcessedAtUtc,
+            MppsLastError = submitResult.IsSuccess ? null : submitResult.Details,
+        };
+
+        PersistSession();
+        _auditService.Record($"{actionName} 上报{(submitResult.IsSuccess ? "成功" : "失败")}: {submitResult.Details}");
     }
 
     /// <summary>
