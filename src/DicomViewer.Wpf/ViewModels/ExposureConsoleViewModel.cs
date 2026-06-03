@@ -179,60 +179,60 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
                 RaisePropertyChanged(nameof(CanRetrieveRemoteStudyViaDicom));
             }
         }
-
-        public string HistoryFilterText
-        {
-            get => _historyFilterText;
-            set
-            {
-                if (!SetProperty(ref _historyFilterText, value))
-                {
-                    return;
-                }
-
-                RaisePropertyChanged(nameof(CanClearHistoryFilter));
-                if (_isApplyingConsoleSnapshot)
-                {
-                    return;
-                }
-
-                HistoryCurrentPage = 1;
-                RefreshHistoryItems();
-            }
-        }
-
-        public int HistoryCurrentPage
-        {
-            get => _historyCurrentPage;
-            private set
-            {
-                if (SetProperty(ref _historyCurrentPage, value))
-                {
-                    RaisePropertyChanged(nameof(HistoryPageText));
-                    RaisePropertyChanged(nameof(CanGoToPreviousHistoryPage));
-                    RaisePropertyChanged(nameof(CanGoToNextHistoryPage));
-                }
-            }
-        }
-
-        public int HistoryTotalPages
-        {
-            get => _historyTotalPages;
-            private set
-            {
-                if (SetProperty(ref _historyTotalPages, value))
-                {
-                    RaisePropertyChanged(nameof(HistoryPageText));
-                    RaisePropertyChanged(nameof(CanGoToPreviousHistoryPage));
-                    RaisePropertyChanged(nameof(CanGoToNextHistoryPage));
-                }
-            }
-        }
-
-        public string HistoryPageText => _historyFilteredCount == 0
-            ? "暂无历史记录"
-            : $"第 {HistoryCurrentPage} / {HistoryTotalPages} 页，共 {_historyFilteredCount} 条";
     }
+
+    public string HistoryFilterText
+    {
+        get => _historyFilterText;
+        set
+        {
+            if (!SetProperty(ref _historyFilterText, value))
+            {
+                return;
+            }
+
+            RaisePropertyChanged(nameof(CanClearHistoryFilter));
+            if (_isApplyingConsoleSnapshot)
+            {
+                return;
+            }
+
+            HistoryCurrentPage = 1;
+            RefreshHistoryItems();
+        }
+    }
+
+    public int HistoryCurrentPage
+    {
+        get => _historyCurrentPage;
+        private set
+        {
+            if (SetProperty(ref _historyCurrentPage, value))
+            {
+                RaisePropertyChanged(nameof(HistoryPageText));
+                RaisePropertyChanged(nameof(CanGoToPreviousHistoryPage));
+                RaisePropertyChanged(nameof(CanGoToNextHistoryPage));
+            }
+        }
+    }
+
+    public int HistoryTotalPages
+    {
+        get => _historyTotalPages;
+        private set
+        {
+            if (SetProperty(ref _historyTotalPages, value))
+            {
+                RaisePropertyChanged(nameof(HistoryPageText));
+                RaisePropertyChanged(nameof(CanGoToPreviousHistoryPage));
+                RaisePropertyChanged(nameof(CanGoToNextHistoryPage));
+            }
+        }
+    }
+
+    public string HistoryPageText => _historyFilteredCount == 0
+        ? "暂无历史记录"
+        : $"第 {HistoryCurrentPage} / {HistoryTotalPages} 页，共 {_historyFilteredCount} 条";
 
     public string ConsoleStatusText
     {
