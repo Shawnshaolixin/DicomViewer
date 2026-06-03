@@ -17,10 +17,13 @@ namespace DicomViewer.Wpf.ViewModels;
 /// </summary>
 public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 {
+    private const int HistoryPageSize = 5;
+
     private readonly ExamWorkflowService _examWorkflowService;
     private readonly IRegionManager _regionManager;
     private bool _isApplyingConsoleSnapshot;
     private bool _isInitialized;
+    private IReadOnlyList<ExamHistoryItem> _allHistoryItems = Array.Empty<ExamHistoryItem>();
     private WorklistItem? _selectedWorklistItem;
     private ExamHistoryItem? _selectedHistoryItem;
     private PacsRemoteStudy? _selectedRemoteStudy;
@@ -70,6 +73,10 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     private bool _tubeWarmedUp = true;
     private bool _doorClosed = true;
     private bool _pacsAvailable = true;
+    private string _historyFilterText = string.Empty;
+    private int _historyCurrentPage = 1;
+    private int _historyTotalPages = 1;
+    private int _historyFilteredCount;
 
     public ExposureConsoleViewModel(ExamWorkflowService examWorkflowService, IRegionManager regionManager)
     {
@@ -94,6 +101,9 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         VerifyPacsConnectionCommand = new DelegateCommand(async () => await VerifyPacsConnectionAsync());
         ApplyExposureParametersCommand = new DelegateCommand(ApplyExposureParameters);
         ApplyPacsConfigurationCommand = new DelegateCommand(ApplyPacsConfiguration);
+        PreviousHistoryPageCommand = new DelegateCommand(ChangeToPreviousHistoryPage).ObservesCanExecute(() => CanGoToPreviousHistoryPage);
+        NextHistoryPageCommand = new DelegateCommand(ChangeToNextHistoryPage).ObservesCanExecute(() => CanGoToNextHistoryPage);
+        ClearHistoryFilterCommand = new DelegateCommand(ClearHistoryFilter).ObservesCanExecute(() => CanClearHistoryFilter);
     }
 
     public ObservableCollection<WorklistItem> WorklistItems { get; }
@@ -121,6 +131,12 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
     public bool CanRetrieveRemoteStudy => SelectedRemoteStudy is not null;
 
     public bool CanRetrieveRemoteStudyViaDicom => SelectedRemoteStudy is not null && !string.IsNullOrWhiteSpace(SelectedRemoteStudy.StudyInstanceUid);
+
+    public bool CanGoToPreviousHistoryPage => HistoryCurrentPage > 1;
+
+    public bool CanGoToNextHistoryPage => HistoryCurrentPage < HistoryTotalPages;
+
+    public bool CanClearHistoryFilter => !string.IsNullOrWhiteSpace(HistoryFilterText);
 
     public WorklistItem? SelectedWorklistItem
     {
@@ -163,6 +179,59 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
                 RaisePropertyChanged(nameof(CanRetrieveRemoteStudyViaDicom));
             }
         }
+
+        public string HistoryFilterText
+        {
+            get => _historyFilterText;
+            set
+            {
+                if (!SetProperty(ref _historyFilterText, value))
+                {
+                    return;
+                }
+
+                RaisePropertyChanged(nameof(CanClearHistoryFilter));
+                if (_isApplyingConsoleSnapshot)
+                {
+                    return;
+                }
+
+                HistoryCurrentPage = 1;
+                RefreshHistoryItems();
+            }
+        }
+
+        public int HistoryCurrentPage
+        {
+            get => _historyCurrentPage;
+            private set
+            {
+                if (SetProperty(ref _historyCurrentPage, value))
+                {
+                    RaisePropertyChanged(nameof(HistoryPageText));
+                    RaisePropertyChanged(nameof(CanGoToPreviousHistoryPage));
+                    RaisePropertyChanged(nameof(CanGoToNextHistoryPage));
+                }
+            }
+        }
+
+        public int HistoryTotalPages
+        {
+            get => _historyTotalPages;
+            private set
+            {
+                if (SetProperty(ref _historyTotalPages, value))
+                {
+                    RaisePropertyChanged(nameof(HistoryPageText));
+                    RaisePropertyChanged(nameof(CanGoToPreviousHistoryPage));
+                    RaisePropertyChanged(nameof(CanGoToNextHistoryPage));
+                }
+            }
+        }
+
+        public string HistoryPageText => _historyFilteredCount == 0
+            ? "暂无历史记录"
+            : $"第 {HistoryCurrentPage} / {HistoryTotalPages} 页，共 {_historyFilteredCount} 条";
     }
 
     public string ConsoleStatusText
@@ -488,6 +557,12 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
 
     public DelegateCommand ApplyPacsConfigurationCommand { get; }
 
+    public DelegateCommand PreviousHistoryPageCommand { get; }
+
+    public DelegateCommand NextHistoryPageCommand { get; }
+
+    public DelegateCommand ClearHistoryFilterCommand { get; }
+
     /// <summary>
     /// Prism 导航始终复用当前控制台页面实例。
     /// </summary>
@@ -634,6 +709,38 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         NavigateToViewer(SelectedHistoryItem.ArtifactPath);
     }
 
+    private void ChangeToPreviousHistoryPage()
+    {
+        if (!CanGoToPreviousHistoryPage)
+        {
+            return;
+        }
+
+        HistoryCurrentPage--;
+        RefreshHistoryItems();
+    }
+
+    private void ChangeToNextHistoryPage()
+    {
+        if (!CanGoToNextHistoryPage)
+        {
+            return;
+        }
+
+        HistoryCurrentPage++;
+        RefreshHistoryItems();
+    }
+
+    private void ClearHistoryFilter()
+    {
+        if (!CanClearHistoryFilter)
+        {
+            return;
+        }
+
+        HistoryFilterText = string.Empty;
+    }
+
     /// <summary>
     /// 把当前界面状态提交到服务层并执行联锁检查。
     /// </summary>
@@ -747,11 +854,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
             WorklistItems.Add(item);
         }
 
-        HistoryItems.Clear();
-        foreach (var item in snapshot.HistoryItems)
-        {
-            HistoryItems.Add(item);
-        }
+        _allHistoryItems = snapshot.HistoryItems;
 
         RemoteStudies.Clear();
         foreach (var item in snapshot.RemoteStudies)
@@ -763,7 +866,7 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         SelectedWorklistItem = snapshot.SelectedOrderId is null
             ? null
             : WorklistItems.FirstOrDefault(item => item.OrderId == snapshot.SelectedOrderId);
-        SelectedHistoryItem = null;
+        RefreshHistoryItems();
         SelectedRemoteStudy = null;
 
         ConsoleStatusText = snapshot.StatusText;
@@ -826,6 +929,54 @@ public sealed class ExposureConsoleViewModel : BindableBase, INavigationAware
         RaisePropertyChanged(nameof(CanReviewHistory));
         RaisePropertyChanged(nameof(CanRetrieveRemoteStudy));
         RaisePropertyChanged(nameof(CanRetrieveRemoteStudyViaDicom));
+        RaisePropertyChanged(nameof(HistoryPageText));
+        RaisePropertyChanged(nameof(CanGoToPreviousHistoryPage));
+        RaisePropertyChanged(nameof(CanGoToNextHistoryPage));
+    }
+
+    private void RefreshHistoryItems()
+    {
+        var filteredItems = _allHistoryItems
+            .Where(MatchesHistoryFilter)
+            .OrderByDescending(item => item.UpdatedAtUtc)
+            .ToList();
+
+        _historyFilteredCount = filteredItems.Count;
+        HistoryTotalPages = Math.Max(1, (int)Math.Ceiling(Math.Max(filteredItems.Count, 1) / (double)HistoryPageSize));
+        HistoryCurrentPage = Math.Min(Math.Max(HistoryCurrentPage, 1), HistoryTotalPages);
+
+        var pageItems = filteredItems
+            .Skip((HistoryCurrentPage - 1) * HistoryPageSize)
+            .Take(HistoryPageSize)
+            .ToList();
+
+        var selectedHistorySessionId = SelectedHistoryItem?.SessionId;
+        HistoryItems.Clear();
+        foreach (var item in pageItems)
+        {
+            HistoryItems.Add(item);
+        }
+
+        SelectedHistoryItem = selectedHistorySessionId is null
+            ? null
+            : HistoryItems.FirstOrDefault(item => item.SessionId == selectedHistorySessionId);
+        RaisePropertyChanged(nameof(HistoryPageText));
+    }
+
+    private bool MatchesHistoryFilter(ExamHistoryItem item)
+    {
+        if (string.IsNullOrWhiteSpace(HistoryFilterText))
+        {
+            return true;
+        }
+
+        var keyword = HistoryFilterText.Trim();
+        return item.PatientName.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || item.ProcedureDescription.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || item.BodyPart.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || item.Projection.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || item.WorkflowStatus.ToString().Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || item.DeviceState.ToString().Contains(keyword, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

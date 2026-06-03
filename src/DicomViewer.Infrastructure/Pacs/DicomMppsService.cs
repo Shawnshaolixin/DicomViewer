@@ -9,11 +9,9 @@ namespace DicomViewer.Infrastructure.Pacs;
 
 /// <summary>
 /// 使用标准 DICOM N-CREATE/N-SET 上报 MPPS。
-/// 当前先实现 Started（IN PROGRESS）的最小闭环，用于在曝光前建立标准执行态。
 /// </summary>
 public sealed class DicomMppsService : IMppsService
 {
-    // 1.2.840.10008.3.1.2.3.3 = Modality Performed Procedure Step SOP Class
     private static readonly DicomUID ModalityPerformedProcedureStepSopClass = new(
         "1.2.840.10008.3.1.2.3.3",
         "Modality Performed Procedure Step SOP Class",
@@ -29,14 +27,10 @@ public sealed class DicomMppsService : IMppsService
     public async Task<MppsSubmitResult> CreateInProgressAsync(ExamSession session, CancellationToken cancellationToken = default)
     {
         var configuration = _consoleConfigurationStore.Load().PacsConfiguration;
-        if (string.IsNullOrWhiteSpace(configuration.MppsHost) || configuration.MppsPort <= 0)
+        var configurationError = ValidateConfiguration(configuration, "MPPS Started 失败", session.MppsInstanceUid ?? string.Empty);
+        if (configurationError is not null)
         {
-            return new MppsSubmitResult(
-                false,
-                "MPPS Started 失败",
-                "未配置 MPPS 目标主机或端口。",
-                session.MppsInstanceUid ?? string.Empty,
-                DateTime.UtcNow);
+            return configurationError;
         }
 
         var sopInstanceUid = string.IsNullOrWhiteSpace(session.MppsInstanceUid)
@@ -49,71 +43,79 @@ public sealed class DicomMppsService : IMppsService
                 ModalityPerformedProcedureStepSopClass,
                 new DicomUID(sopInstanceUid, null, DicomUidType.SOPInstance))
             {
-                // 当前版本只构建 Started 所需的最小数据集，后续再补完整字段。
                 Dataset = BuildStartedDataset(session, configuration),
             };
 
-            MppsSubmitResult? result = null;
-            request.OnResponseReceived += (_, response) =>
-            {
-                var state = response.Status?.State;
-                var isSuccess = state is DicomState.Success or DicomState.Warning;
-                result = new MppsSubmitResult(
-                    isSuccess,
-                    isSuccess ? "MPPS Started 成功" : "MPPS Started 失败",
-                    response.Status?.Description ?? response.Status?.ToString() ?? "未收到状态描述。",
-                    sopInstanceUid,
-                    DateTime.UtcNow);
-            };
-
-            var client = DicomClientFactory.Create(
-                configuration.MppsHost,
-                configuration.MppsPort,
-                false,
-                configuration.CallingAeTitle,
-                string.IsNullOrWhiteSpace(configuration.MppsCalledAeTitle)
-                    ? configuration.CalledAeTitle
-                    : configuration.MppsCalledAeTitle);
-
-            await client.AddRequestAsync(request);
-            await client.SendAsync(cancellationToken, DicomClientCancellationMode.ImmediatelyReleaseAssociation);
-
-            return result ?? new MppsSubmitResult(
-                false,
-                "MPPS Started 失败",
-                "未收到 N-CREATE 终态响应。",
-                sopInstanceUid,
-                DateTime.UtcNow);
+            return await SubmitCreateAsync(configuration, request, sopInstanceUid, "MPPS Started", cancellationToken);
         }
         catch (Exception ex)
         {
-            return new MppsSubmitResult(
-                false,
-                "MPPS Started 失败",
-                ex.Message,
-                sopInstanceUid,
-                DateTime.UtcNow);
+            return new MppsSubmitResult(false, "MPPS Started 失败", ex.Message, sopInstanceUid, DateTime.UtcNow);
         }
     }
 
-    public Task<MppsSubmitResult> CompleteAsync(ExamSession session, CancellationToken cancellationToken = default)
+    public async Task<MppsSubmitResult> CompleteAsync(ExamSession session, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new MppsSubmitResult(
-            false,
-            "MPPS Completed 暂未实现",
-            "当前阶段只实现 Started（N-CREATE），Completed 将在下一阶段接入。",
-            session.MppsInstanceUid ?? string.Empty,
-            DateTime.UtcNow));
+        var configuration = _consoleConfigurationStore.Load().PacsConfiguration;
+        var sopInstanceUid = session.MppsInstanceUid ?? string.Empty;
+        var configurationError = ValidateConfiguration(configuration, "MPPS Completed 失败", sopInstanceUid);
+        if (configurationError is not null)
+        {
+            return configurationError;
+        }
+
+        if (string.IsNullOrWhiteSpace(sopInstanceUid))
+        {
+            return new MppsSubmitResult(false, "MPPS Completed 失败", "当前会话尚未生成 MPPS SOP Instance UID。", string.Empty, DateTime.UtcNow);
+        }
+
+        try
+        {
+            var request = new DicomNSetRequest(
+                ModalityPerformedProcedureStepSopClass,
+                new DicomUID(sopInstanceUid, null, DicomUidType.SOPInstance))
+            {
+                Dataset = BuildFinalDataset(session, "COMPLETED"),
+            };
+
+            return await SubmitSetAsync(configuration, request, sopInstanceUid, "MPPS Completed", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return new MppsSubmitResult(false, "MPPS Completed 失败", ex.Message, sopInstanceUid, DateTime.UtcNow);
+        }
     }
 
-    public Task<MppsSubmitResult> DiscontinueAsync(ExamSession session, string reason, CancellationToken cancellationToken = default)
+    public async Task<MppsSubmitResult> DiscontinueAsync(ExamSession session, string reason, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new MppsSubmitResult(
-            false,
-            "MPPS Discontinued 暂未实现",
-            $"当前阶段只实现 Started（N-CREATE），Discontinued 将在下一阶段接入。原因: {reason}",
-            session.MppsInstanceUid ?? string.Empty,
-            DateTime.UtcNow));
+        var configuration = _consoleConfigurationStore.Load().PacsConfiguration;
+        var sopInstanceUid = session.MppsInstanceUid ?? string.Empty;
+        var configurationError = ValidateConfiguration(configuration, "MPPS Discontinued 失败", sopInstanceUid);
+        if (configurationError is not null)
+        {
+            return configurationError;
+        }
+
+        if (string.IsNullOrWhiteSpace(sopInstanceUid))
+        {
+            return new MppsSubmitResult(false, "MPPS Discontinued 失败", "当前会话尚未生成 MPPS SOP Instance UID。", string.Empty, DateTime.UtcNow);
+        }
+
+        try
+        {
+            var request = new DicomNSetRequest(
+                ModalityPerformedProcedureStepSopClass,
+                new DicomUID(sopInstanceUid, null, DicomUidType.SOPInstance))
+            {
+                Dataset = BuildFinalDataset(session, "DISCONTINUED", reason),
+            };
+
+            return await SubmitSetAsync(configuration, request, sopInstanceUid, "MPPS Discontinued", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return new MppsSubmitResult(false, "MPPS Discontinued 失败", ex.Message, sopInstanceUid, DateTime.UtcNow);
+        }
     }
 
     private static DicomDataset BuildStartedDataset(ExamSession session, PacsConfiguration configuration)
@@ -122,7 +124,6 @@ public sealed class DicomMppsService : IMppsService
         var startedDate = now.ToString("yyyyMMdd");
         var startedTime = now.ToString("HHmmss");
 
-        // ScheduledStepAttributesSequence 是 MPPS 里最常用的关联锚点。
         var scheduledStepAttributes = new DicomDataset();
         if (!string.IsNullOrWhiteSpace(session.ScheduledProcedureStepIdSnapshot))
         {
@@ -158,5 +159,99 @@ public sealed class DicomMppsService : IMppsService
             { DicomTag.PerformedStationName, configuration.StationName },
             new DicomSequence(DicomTag.ScheduledStepAttributesSequence, scheduledStepAttributes),
         };
+    }
+
+    private static DicomDataset BuildFinalDataset(ExamSession session, string status, string? reason = null)
+    {
+        var now = DateTime.Now;
+        var dataset = new DicomDataset
+        {
+            { DicomTag.PerformedProcedureStepStatus, status },
+            { DicomTag.PerformedProcedureStepEndDate, now.ToString("yyyyMMdd") },
+            { DicomTag.PerformedProcedureStepEndTime, now.ToString("HHmmss") },
+        };
+
+        if (!string.IsNullOrWhiteSpace(session.LastGeneratedArtifact))
+        {
+            dataset.AddOrUpdate(DicomTag.PerformedProcedureStepDescription, Path.GetFileNameWithoutExtension(session.LastGeneratedArtifact));
+        }
+
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            dataset.AddOrUpdate(DicomTag.CommentsOnThePerformedProcedureStep, reason);
+        }
+
+        return dataset;
+    }
+
+    private static MppsSubmitResult? ValidateConfiguration(PacsConfiguration configuration, string failureStatusText, string sopInstanceUid)
+    {
+        if (!string.IsNullOrWhiteSpace(configuration.MppsHost) && configuration.MppsPort > 0)
+        {
+            return null;
+        }
+
+        return new MppsSubmitResult(false, failureStatusText, "未配置 MPPS 目标主机或端口。", sopInstanceUid, DateTime.UtcNow);
+    }
+
+    private static async Task<MppsSubmitResult> SubmitCreateAsync(
+        PacsConfiguration configuration,
+        DicomNCreateRequest request,
+        string sopInstanceUid,
+        string actionName,
+        CancellationToken cancellationToken)
+    {
+        MppsSubmitResult? result = null;
+        request.OnResponseReceived += (_, response) =>
+        {
+            result = BuildSubmitResult(response.Status, $"{actionName} 成功", $"{actionName} 失败", sopInstanceUid);
+        };
+
+        await SendAsync(configuration, request, cancellationToken);
+        return result ?? new MppsSubmitResult(false, $"{actionName} 失败", $"未收到 {actionName} 终态响应。", sopInstanceUid, DateTime.UtcNow);
+    }
+
+    private static async Task<MppsSubmitResult> SubmitSetAsync(
+        PacsConfiguration configuration,
+        DicomNSetRequest request,
+        string sopInstanceUid,
+        string actionName,
+        CancellationToken cancellationToken)
+    {
+        MppsSubmitResult? result = null;
+        request.OnResponseReceived += (_, response) =>
+        {
+            result = BuildSubmitResult(response.Status, $"{actionName} 成功", $"{actionName} 失败", sopInstanceUid);
+        };
+
+        await SendAsync(configuration, request, cancellationToken);
+        return result ?? new MppsSubmitResult(false, $"{actionName} 失败", $"未收到 {actionName} 终态响应。", sopInstanceUid, DateTime.UtcNow);
+    }
+
+    private static MppsSubmitResult BuildSubmitResult(DicomStatus? status, string successText, string failureText, string sopInstanceUid)
+    {
+        var state = status?.State;
+        var isSuccess = state is DicomState.Success or DicomState.Warning;
+        return new MppsSubmitResult(
+            isSuccess,
+            isSuccess ? successText : failureText,
+            status?.Description ?? status?.ToString() ?? "未收到状态描述。",
+            sopInstanceUid,
+            DateTime.UtcNow);
+    }
+
+    private static async Task SendAsync(PacsConfiguration configuration, DicomRequest request, CancellationToken cancellationToken)
+    {
+        var client = DicomClientFactory.Create(
+            configuration.MppsHost,
+            configuration.MppsPort,
+            false,
+            configuration.CallingAeTitle,
+            string.IsNullOrWhiteSpace(configuration.MppsCalledAeTitle)
+                ? configuration.CalledAeTitle
+                : configuration.MppsCalledAeTitle);
+
+        await client.AddRequestAsync(request);
+        await client.SendAsync(cancellationToken, DicomClientCancellationMode.ImmediatelyReleaseAssociation);
     }
 }

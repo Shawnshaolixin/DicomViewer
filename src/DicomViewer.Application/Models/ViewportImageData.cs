@@ -4,4 +4,5 @@ public sealed record ViewportImageData(
     byte[] Pixels,
     int Width,
     int Height,
-    int Stride);
+    int Stride,
+    ViewportPixelFormat PixelFormat = ViewportPixelFormat.Gray8);

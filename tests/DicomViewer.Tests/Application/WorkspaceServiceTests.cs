@@ -97,6 +97,19 @@ public sealed class WorkspaceServiceTests
         Assert.Equal("目录不存在: /missing", snapshot.NotesText);
     }
 
+    [Fact]
+    public async Task LoadAsync_BuildsThumbnailForSeriesList()
+    {
+        var service = CreateWorkspaceService();
+
+        var snapshot = await service.LoadAsync();
+
+        var series = Assert.Single(snapshot.SeriesItems);
+        Assert.NotNull(series.ThumbnailImage);
+        Assert.Equal(2, series.ThumbnailImage!.Width);
+        Assert.Equal(2, series.ThumbnailImage.Height);
+    }
+
     private static WorkspaceService CreateWorkspaceService()
     {
         var imageInstance = new ImageInstance

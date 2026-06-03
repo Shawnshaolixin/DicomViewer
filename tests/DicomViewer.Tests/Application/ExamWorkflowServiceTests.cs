@@ -121,6 +121,42 @@ public sealed class ExamWorkflowServiceTests
         Assert.Null(snapshot.LastExposureResult);
     }
 
+    [Fact]
+    public async Task ExecuteExposureAsync_WhenExposureSucceeds_CompletesMpps()
+    {
+        var recordingMppsService = new RecordingMppsService();
+        var service = CreateService(mppsService: recordingMppsService);
+
+        _ = await service.LoadWorklistAsync();
+        _ = service.SelectOrder("ORD-1");
+
+        var snapshot = await service.ExecuteExposureAsync();
+
+        Assert.NotNull(snapshot.LastExposureResult);
+        Assert.Equal(1, recordingMppsService.CreateCount);
+        Assert.Equal(1, recordingMppsService.CompleteCount);
+        Assert.Equal(0, recordingMppsService.DiscontinueCount);
+    }
+
+    [Fact]
+    public async Task ExecuteExposureAsync_WhenExposureFails_DiscontinuesMpps()
+    {
+        var recordingMppsService = new RecordingMppsService();
+        var service = CreateService(
+            recordingExposureSimulationService: new ThrowingExposureSimulationService(),
+            mppsService: recordingMppsService);
+
+        _ = await service.LoadWorklistAsync();
+        _ = service.SelectOrder("ORD-1");
+
+        var snapshot = await service.ExecuteExposureAsync();
+
+        Assert.Equal("模拟曝光失败", snapshot.StatusText);
+        Assert.Equal(1, recordingMppsService.CreateCount);
+        Assert.Equal(0, recordingMppsService.CompleteCount);
+        Assert.Equal(1, recordingMppsService.DiscontinueCount);
+    }
+
     private static ExamWorkflowService CreateService(
         IExposureSimulationService? recordingExposureSimulationService = null,
         IMppsService? mppsService = null)
@@ -195,6 +231,14 @@ public sealed class ExamWorkflowServiceTests
                 "模拟图像已生成",
                 Path.Combine(outputDirectory, "SIM-REC-1.dcm"),
                 new DateTime(2026, 5, 23, 1, 5, 0, DateTimeKind.Utc)));
+        }
+    }
+
+    private sealed class ThrowingExposureSimulationService : IExposureSimulationService
+    {
+        public Task<ExposureResult> RunAsync(ExamSession session, string outputDirectory, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("模拟曝光服务故障。");
         }
     }
 
@@ -317,6 +361,34 @@ public sealed class ExamWorkflowServiceTests
         public Task<MppsSubmitResult> DiscontinueAsync(ExamSession session, string reason, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(new MppsSubmitResult(true, "ok", reason, session.MppsInstanceUid ?? string.Empty, DateTime.UtcNow));
+        }
+    }
+
+    private sealed class RecordingMppsService : IMppsService
+    {
+        public int CreateCount { get; private set; }
+
+        public int CompleteCount { get; private set; }
+
+        public int DiscontinueCount { get; private set; }
+
+        public Task<MppsSubmitResult> CreateInProgressAsync(ExamSession session, CancellationToken cancellationToken = default)
+        {
+            CreateCount++;
+            var sopInstanceUid = string.IsNullOrWhiteSpace(session.MppsInstanceUid) ? "mpps-1" : session.MppsInstanceUid!;
+            return Task.FromResult(new MppsSubmitResult(true, "MPPS Started 成功", "ok", sopInstanceUid, DateTime.UtcNow));
+        }
+
+        public Task<MppsSubmitResult> CompleteAsync(ExamSession session, CancellationToken cancellationToken = default)
+        {
+            CompleteCount++;
+            return Task.FromResult(new MppsSubmitResult(true, "MPPS Completed 成功", "ok", session.MppsInstanceUid ?? "mpps-1", DateTime.UtcNow));
+        }
+
+        public Task<MppsSubmitResult> DiscontinueAsync(ExamSession session, string reason, CancellationToken cancellationToken = default)
+        {
+            DiscontinueCount++;
+            return Task.FromResult(new MppsSubmitResult(true, "MPPS Discontinued 成功", reason, session.MppsInstanceUid ?? "mpps-1", DateTime.UtcNow));
         }
     }
 }
