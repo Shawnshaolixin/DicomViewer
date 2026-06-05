@@ -8,7 +8,7 @@
 ## 运行
 
 ```bash
-dotnet run --project /tmp/workspace/Shawnshaolixin/DicomViewer/tests/DicomViewer.WorkflowScpDemo -- --host 127.0.0.1 --port 11112 --ae RIS_SCP --data /tmp/workspace/Shawnshaolixin/DicomViewer/tests/DicomViewer.WorkflowScpDemo/workflow-data.json
+dotnet run --project ./tests/DicomViewer.WorkflowScpDemo -- --host 127.0.0.1 --port 11112 --ae RIS_SCP --data ./tests/DicomViewer.WorkflowScpDemo/workflow-data.json
 ```
 
 默认参数：
