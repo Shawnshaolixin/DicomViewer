@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text;
 using FellowOakDicom;
 using FellowOakDicom.Network;
@@ -124,7 +123,6 @@ internal sealed class DicomWorkflowScpServer : IDisposable
                         ? DicomStatus.DuplicateSOPInstance
                         : DicomStatus.NoSuchObjectInstance)
             {
-                SOPInstanceUID = request.SOPInstanceUID,
                 Dataset = BuildMppsEchoDataset(result.Record, dataset),
             };
 
@@ -148,7 +146,6 @@ internal sealed class DicomWorkflowScpServer : IDisposable
                 request,
                 result.Success ? DicomStatus.Success : DicomStatus.NoSuchObjectInstance)
             {
-                SOPInstanceUID = request.SOPInstanceUID,
                 Dataset = BuildMppsEchoDataset(result.Record, dataset),
             };
 
@@ -173,13 +170,6 @@ internal sealed class DicomWorkflowScpServer : IDisposable
         public Task<DicomNGetResponse> OnNGetRequestAsync(DicomNGetRequest request)
         {
             return Task.FromResult(new DicomNGetResponse(request, DicomStatus.NoSuchObjectInstance));
-        }
-
-        [EnumeratorCancellation]
-        private static async IAsyncEnumerable<DicomCFindResponse> Empty([EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            await Task.CompletedTask;
-            yield break;
         }
 
         private static WorklistQueryCriteria ReadQueryCriteria(DicomDataset dataset)
