@@ -9,5 +9,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DicomViewer.Tests/DicomViewer.Tests.csproj" />
+    <Project Path="tests/DicomViewer.WorkflowScpDemo/DicomViewer.WorkflowScpDemo.csproj" />
   </Folder>
 </Solution>
