@@ -1,0 +1,41 @@
+{
+  "worklistItems": [
+    {
+      "orderId": "ORDER-001",
+      "patientId": "P10001",
+      "patientName": "ZHANG^SAN",
+      "accessionNumber": "ACC-20260605-001",
+      "requestedProcedureId": "RP-001",
+      "scheduledProcedureStepId": "SPS-001",
+      "studyInstanceUid": "1.2.826.0.1.3680043.10.543.1.1.1",
+      "modality": "DX",
+      "scheduledStationAeTitle": "DICOMVIEWER",
+      "scheduledProcedureStepDescription": "Chest PA",
+      "requestedProcedureDescription": "Chest X-Ray",
+      "referringPhysicianName": "LI^DOCTOR",
+      "patientSex": "M",
+      "patientBirthDate": "19881001",
+      "status": "SCHEDULED",
+      "scheduledStart": "2026-06-05T09:00:00"
+    },
+    {
+      "orderId": "ORDER-002",
+      "patientId": "P10002",
+      "patientName": "LI^SI",
+      "accessionNumber": "ACC-20260605-002",
+      "requestedProcedureId": "RP-002",
+      "scheduledProcedureStepId": "SPS-002",
+      "studyInstanceUid": "1.2.826.0.1.3680043.10.543.1.1.2",
+      "modality": "CT",
+      "scheduledStationAeTitle": "DICOMVIEWER",
+      "scheduledProcedureStepDescription": "Head Plain",
+      "requestedProcedureDescription": "Head CT",
+      "referringPhysicianName": "WANG^DOCTOR",
+      "patientSex": "F",
+      "patientBirthDate": "19920512",
+      "status": "SCHEDULED",
+      "scheduledStart": "2026-06-05T10:00:00"
+    }
+  ],
+  "mppsRecords": []
+}
