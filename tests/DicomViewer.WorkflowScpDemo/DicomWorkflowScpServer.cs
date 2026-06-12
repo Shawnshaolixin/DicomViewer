@@ -1,6 +1,10 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using FellowOakDicom;
 using FellowOakDicom.Network;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DicomViewer.WorkflowScpDemo;
@@ -10,9 +14,13 @@ internal sealed class DicomWorkflowScpServer : IDisposable
     private readonly WorkflowScpState _state;
     private IDicomServer? _server;
 
-    public DicomWorkflowScpServer(WorkflowDataStore store, WorkflowServerOptions options)
+    public DicomWorkflowScpServer(
+        WorkflowDataStore store,
+        WorkflowServerOptions options,
+        IWorkflowScpAuditSink auditSink,
+        ILogger<DicomWorkflowScpServer>? logger = null)
     {
-        _state = new WorkflowScpState(store, options.CalledAeTitle);
+        _state = new WorkflowScpState(store, options.CalledAeTitle, auditSink, logger ?? NullLogger<DicomWorkflowScpServer>.Instance);
         Options = options;
     }
 
@@ -35,19 +43,48 @@ internal sealed class DicomWorkflowScpServer : IDisposable
         _server?.Stop();
     }
 
-    private sealed record WorkflowScpState(WorkflowDataStore Store, string CalledAeTitle);
+    private sealed record WorkflowScpState(
+        WorkflowDataStore Store,
+        string CalledAeTitle,
+        IWorkflowScpAuditSink AuditSink,
+        ILogger ServerLogger);
 
     private sealed class WorkflowScpService : DicomService, IDicomServiceProvider, IDicomCFindProvider, IDicomNServiceProvider
     {
-        public WorkflowScpService(INetworkStream stream, Encoding fallbackEncoding, Microsoft.Extensions.Logging.ILogger logger, DicomServiceDependencies dependencies)
+        private readonly string _connectionId = Guid.NewGuid().ToString("N");
+        private readonly string _remoteIp;
+        private readonly int? _remotePort;
+        private string _callingAeTitle = "UNKNOWN";
+        private string _calledAeTitle = "UNKNOWN";
+
+        public WorkflowScpService(INetworkStream stream, Encoding fallbackEncoding, ILogger logger, DicomServiceDependencies dependencies)
             : base(stream, fallbackEncoding, logger, dependencies)
         {
+            (_remoteIp, _remotePort) = TryGetRemoteEndpoint(stream, logger);
         }
 
         public async Task OnReceiveAssociationRequestAsync(DicomAssociation association)
         {
-            if (UserState is not WorkflowScpState state || !string.Equals(state.CalledAeTitle, association.CalledAE, StringComparison.OrdinalIgnoreCase))
+            if (UserState is not WorkflowScpState state)
             {
+                await SendAssociationRejectAsync(DicomRejectResult.Permanent, DicomRejectSource.ServiceProviderACSE, DicomRejectReason.NoReasonGiven);
+                return;
+            }
+
+            _callingAeTitle = NormalizeAe(association.CallingAE);
+            _calledAeTitle = NormalizeAe(association.CalledAE);
+
+            ReportAudit(state, "AssociationRequested", "Requested", null);
+            state.ServerLogger.LogInformation(
+                "Association requested from {CallingAE} to {CalledAE}, remote={RemoteIp}:{RemotePort}",
+                _callingAeTitle,
+                _calledAeTitle,
+                _remoteIp,
+                _remotePort);
+
+            if (!string.Equals(state.CalledAeTitle, association.CalledAE, StringComparison.OrdinalIgnoreCase))
+            {
+                ReportAudit(state, "AssociationRejected", "CalledAENotRecognized", null);
                 await SendAssociationRejectAsync(DicomRejectResult.Permanent, DicomRejectSource.ServiceUser, DicomRejectReason.CalledAENotRecognized);
                 return;
             }
@@ -60,20 +97,35 @@ internal sealed class DicomWorkflowScpServer : IDisposable
                 }
             }
 
+            ReportAudit(state, "AssociationAccepted", "Accepted", null);
             await SendAssociationAcceptAsync(association);
         }
 
         public Task OnReceiveAssociationReleaseRequestAsync()
         {
+            if (UserState is WorkflowScpState state)
+            {
+                ReportAudit(state, "AssociationReleaseRequested", "ReleaseRequested", null);
+            }
+
             return SendAssociationReleaseResponseAsync();
         }
 
         public void OnReceiveAbort(DicomAbortSource source, DicomAbortReason reason)
         {
+            if (UserState is WorkflowScpState state)
+            {
+                ReportAudit(state, "AssociationAborted", source.ToString(), reason.ToString());
+            }
         }
 
         public void OnConnectionClosed(Exception? exception)
         {
+            if (UserState is WorkflowScpState state)
+            {
+                var detail = exception is null ? null : exception.GetType().Name;
+                ReportAudit(state, "ConnectionClosed", exception is null ? "Closed" : "ClosedWithError", detail);
+            }
         }
 
         public async IAsyncEnumerable<DicomCFindResponse> OnCFindRequestAsync(DicomCFindRequest request)
@@ -85,6 +137,12 @@ internal sealed class DicomWorkflowScpServer : IDisposable
             }
 
             var criteria = ReadQueryCriteria(request.Dataset);
+            ReportAudit(
+                state,
+                "MwlCFind",
+                "Requested",
+                $"PatientId={criteria.PatientId};AccessionNumber={criteria.AccessionNumber};Modality={criteria.Modality}");
+
             foreach (var item in state.Store.QueryWorklist(criteria))
             {
                 yield return new DicomCFindResponse(request, DicomStatus.Pending)
@@ -93,6 +151,7 @@ internal sealed class DicomWorkflowScpServer : IDisposable
                 };
             }
 
+            ReportAudit(state, "MwlCFind", "Completed", null);
             yield return new DicomCFindResponse(request, DicomStatus.Success);
             await Task.CompletedTask;
         }
@@ -126,6 +185,12 @@ internal sealed class DicomWorkflowScpServer : IDisposable
                 Dataset = BuildMppsEchoDataset(result.Record, dataset),
             };
 
+            ReportAudit(
+                state,
+                "MppsNCreate",
+                result.Success ? "Success" : "Failed",
+                $"SopInstanceUid={request.SOPInstanceUID?.UID};PerformedProcedureStepId={GetString(dataset, DicomTag.PerformedProcedureStepID)}");
+
             return Task.FromResult(response);
         }
 
@@ -149,6 +214,12 @@ internal sealed class DicomWorkflowScpServer : IDisposable
                 Dataset = BuildMppsEchoDataset(result.Record, dataset),
             };
 
+            ReportAudit(
+                state,
+                "MppsNSet",
+                result.Success ? "Success" : "Failed",
+                $"SopInstanceUid={request.SOPInstanceUID?.UID};Status={GetString(dataset, DicomTag.PerformedProcedureStepStatus)}");
+
             return Task.FromResult(response);
         }
 
@@ -170,6 +241,22 @@ internal sealed class DicomWorkflowScpServer : IDisposable
         public Task<DicomNGetResponse> OnNGetRequestAsync(DicomNGetRequest request)
         {
             return Task.FromResult(new DicomNGetResponse(request, DicomStatus.NoSuchObjectInstance));
+        }
+
+        private void ReportAudit(WorkflowScpState state, string eventType, string status, string? detail)
+        {
+            var timestamp = DateTime.UtcNow;
+            state.AuditSink.RecordEvent(new DicomProtocolAuditEvent(
+                eventType,
+                timestamp,
+                DeviceDiscoveryAuditPipeline.BuildDeviceKey(_remoteIp, _callingAeTitle, _calledAeTitle),
+                _connectionId,
+                _remoteIp,
+                _remotePort,
+                _callingAeTitle,
+                _calledAeTitle,
+                status,
+                detail));
         }
 
         private static WorklistQueryCriteria ReadQueryCriteria(DicomDataset dataset)
@@ -241,6 +328,107 @@ internal sealed class DicomWorkflowScpServer : IDisposable
         private static string GetString(DicomDataset dataset, DicomTag tag)
         {
             return dataset.TryGetSingleValue(tag, out string? value) ? value?.Trim() ?? string.Empty : string.Empty;
+        }
+
+        private static string NormalizeAe(string? ae)
+        {
+            return string.IsNullOrWhiteSpace(ae) ? "UNKNOWN" : ae.Trim();
+        }
+
+        private static (string ip, int? port) TryGetRemoteEndpoint(INetworkStream stream, ILogger logger)
+        {
+            try
+            {
+                if (stream is NetworkStream networkStream && networkStream.Socket?.RemoteEndPoint is IPEndPoint socketEndPoint)
+                {
+                    return (socketEndPoint.Address.ToString(), socketEndPoint.Port);
+                }
+
+                if (TryExtractEndpoint(stream, logger, out var endpoint))
+                {
+                    return endpoint;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to resolve remote endpoint for DICOM connection.");
+            }
+
+            return ("unknown", null);
+        }
+
+        private static bool TryExtractEndpoint(object source, ILogger logger, out (string ip, int? port) endpoint)
+        {
+            endpoint = ("unknown", null);
+
+            if (TryGetIpEndpoint(source, out var direct))
+            {
+                endpoint = direct;
+                return true;
+            }
+
+            if (TryGetProperty(source, "Socket", out var socketObject) && socketObject is Socket socket && socket.RemoteEndPoint is IPEndPoint socketRemote)
+            {
+                endpoint = (socketRemote.Address.ToString(), socketRemote.Port);
+                return true;
+            }
+
+            if (TryGetProperty(source, "TcpClient", out var tcpClientObject)
+                && tcpClientObject is not null
+                && TryGetProperty(tcpClientObject, "Client", out var clientSocketObject)
+                && clientSocketObject is Socket clientSocket
+                && clientSocket.RemoteEndPoint is IPEndPoint clientRemote)
+            {
+                endpoint = (clientRemote.Address.ToString(), clientRemote.Port);
+                return true;
+            }
+
+            if (TryGetProperty(source, "InnerStream", out var innerStreamObject) && innerStreamObject is not null)
+            {
+                return TryExtractEndpoint(innerStreamObject, logger, out endpoint);
+            }
+
+            return false;
+        }
+
+        private static bool TryGetIpEndpoint(object source, out (string ip, int? port) endpoint)
+        {
+            endpoint = ("unknown", null);
+
+            if (source is EndPoint endPoint && endPoint is IPEndPoint ipEndPoint)
+            {
+                endpoint = (ipEndPoint.Address.ToString(), ipEndPoint.Port);
+                return true;
+            }
+
+            if (TryGetProperty(source, "RemoteEndPoint", out var remoteEndPointObject)
+                && remoteEndPointObject is IPEndPoint remoteEndPoint)
+            {
+                endpoint = (remoteEndPoint.Address.ToString(), remoteEndPoint.Port);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetProperty(object source, string propertyName, out object? value)
+        {
+            value = null;
+            var property = source.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property is null || property.GetIndexParameters().Length > 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = property.GetValue(source);
+                return value is not null;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }
