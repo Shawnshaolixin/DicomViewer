@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\DicomViewer.Infrastructure\DicomViewer.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\DicomViewer.Rendering\DicomViewer.Rendering.csproj" />
     <ProjectReference Include="..\..\src\DicomViewer.Shared\DicomViewer.Shared.csproj" />
+    <ProjectReference Include="..\DicomViewer.WorkflowScpDemo\DicomViewer.WorkflowScpDemo.csproj" />
   </ItemGroup>
 
 </Project>
