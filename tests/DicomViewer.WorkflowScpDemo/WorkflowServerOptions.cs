@@ -1,6 +1,12 @@
 namespace DicomViewer.WorkflowScpDemo;
 
-internal sealed record WorkflowServerOptions(string Host, int Port, string CalledAeTitle, string DataFilePath)
+internal sealed record WorkflowServerOptions(
+    string Host,
+    int Port,
+    string CalledAeTitle,
+    string DataFilePath,
+    string DatabaseFilePath,
+    string HttpUrl)
 {
     public static WorkflowServerOptions Parse(string[] args)
     {
@@ -8,6 +14,8 @@ internal sealed record WorkflowServerOptions(string Host, int Port, string Calle
         var port = 11112;
         var calledAeTitle = "RIS_SCP";
         var dataFilePath = Path.Combine(AppContext.BaseDirectory, "workflow-data.json");
+        var databaseFilePath = Path.Combine(AppContext.BaseDirectory, "workflow-discovery.db");
+        var httpUrl = "http://127.0.0.1:5200";
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -25,6 +33,12 @@ internal sealed record WorkflowServerOptions(string Host, int Port, string Calle
                 case "--data":
                     dataFilePath = Path.GetFullPath(ReadValue(args, ref index, "--data"));
                     break;
+                case "--db":
+                    databaseFilePath = Path.GetFullPath(ReadValue(args, ref index, "--db"));
+                    break;
+                case "--http-url":
+                    httpUrl = ReadValue(args, ref index, "--http-url");
+                    break;
                 case "--help":
                 case "-h":
                     PrintHelp();
@@ -40,7 +54,7 @@ internal sealed record WorkflowServerOptions(string Host, int Port, string Calle
             throw new ArgumentOutOfRangeException(nameof(args), "端口必须在 1-65535 范围内。");
         }
 
-        return new WorkflowServerOptions(host, port, calledAeTitle, dataFilePath);
+        return new WorkflowServerOptions(host, port, calledAeTitle, dataFilePath, databaseFilePath, httpUrl);
     }
 
     private static string ReadValue(string[] args, ref int index, string optionName)
@@ -57,6 +71,6 @@ internal sealed record WorkflowServerOptions(string Host, int Port, string Calle
     private static void PrintHelp()
     {
         Console.WriteLine("用法:");
-        Console.WriteLine("  dotnet run --project tests/DicomViewer.WorkflowScpDemo -- [--host 127.0.0.1] [--port 11112] [--ae RIS_SCP] [--data workflow-data.json]");
+        Console.WriteLine("  dotnet run --project tests/DicomViewer.WorkflowScpDemo -- [--host 127.0.0.1] [--port 11112] [--ae RIS_SCP] [--data workflow-data.json] [--db workflow-discovery.db] [--http-url http://127.0.0.1:5200]");
     }
 }
